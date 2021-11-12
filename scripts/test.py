@@ -19,9 +19,12 @@ from tsai.models import TCN, ResNet, TST, RNN, TransformerModel, FCN
 import pandas as pd
 
 
+# First experiment
+# ================
+
 datasets_params = [
     DatasetParams(
-        path="data/daily-min-temperatures.csv",
+        path="../data/daily-min-temperatures.csv",
         target="Temp",
         split_proportions=[0.8, 0.1, 0.1],
         window_size=366,
@@ -34,7 +37,8 @@ datasets_params = [
         ])
 ]
 
-
+# Second experiment
+# ================
 # load_params = {
 #     "sep": ';', "header": 0, "low_memory": False,
 #     "infer_datetime_format": True, "parse_dates": {'datetime': [0, 1]},
@@ -85,6 +89,4 @@ exp.run_experiments(
     "lightning_logs", tr_p, chp_p, es_p,
     experiments_path="saved_experiments", safe=False)
 
-# print("true_vals: ", exp.datasets_params.iloc[0].true_values.shape[0])
-# print("preds: ", exp.predictions.iloc[0]["predictions"].__len__())
-exp.plot_predictions(0)
+exp.plot_predictions(0, file_path="predictions.html")
