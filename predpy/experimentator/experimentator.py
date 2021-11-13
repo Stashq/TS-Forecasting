@@ -140,7 +140,7 @@ class Experimentator:
         """
         ds_params = self.datasets_params.iloc[dataset_idx]
         df = load_and_preprocess(
-            ds_params.path, ds_params.pipeline, ds_params.load_params)
+            ds_params.path, ds_params.load_params, ds_params.pipeline)
 
         tsm = TimeSeriesModule(
             sequence=df,

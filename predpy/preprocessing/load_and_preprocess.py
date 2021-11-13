@@ -18,8 +18,8 @@ from tqdm import tqdm
 
 def load_and_preprocess(
     dataset_path: str,
-    pipeline: List[Union[Callable, Tuple, List]],
     load_params: Dict = {},
+    pipeline: List[Union[Callable, Tuple, List]] = None,
     verbose: bool = False
 ) -> pd.DataFrame:
     """Loads data and preprocesses it with functions provided in in pipeline.\n
@@ -34,8 +34,11 @@ def load_and_preprocess(
     ----------
     dataset_path : str
         Path to time series file. Should be "csv" format.
-    pipeline : List[Union[Callable, Tuple, List]]
-        List of preprocessing comands. Pipeline has to be created
+    load_params : Dict, optional
+        Additional parameters passed to pd.read_csv function loading dataset.
+        By default {}.
+    pipeline : List[Union[Callable, Tuple, List]], optional
+        List of preprocessing commands. Pipeline has to be created
          with the following rules:
         * every element has to be a callable, tuple or list of preprocessing
         functions and additional arguments,
@@ -46,9 +49,7 @@ def load_and_preprocess(
         create your own preprocessing function sticking to these rules,
         * you can pass *args or **kwargs or both of them to transforming
         function, just remember to pass it in this order.
-    load_params : Dict, optional
-        Additional parameters passed to pd.read_csv function loading dataset.
-        By default {}.
+        By default None.
     verbose : bool, optional
         If True, show progress bar. By default False.
 

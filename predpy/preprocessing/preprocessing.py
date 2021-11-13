@@ -40,7 +40,7 @@ def set_index(
 def fit_scaler(
     time_series: pd.DataFrame,
     training_fraction: float,
-    scaler: TransformerMixin = MinMaxScaler
+    scaler: TransformerMixin = MinMaxScaler()
 ) -> TransformerMixin:
     """Fits a scaler.
 
@@ -74,7 +74,7 @@ def fit_scaler(
 def scale(
     time_series: pd.DataFrame,
     training_fraction: float,
-    scaler: TransformerMixin = MinMaxScaler
+    scaler: TransformerMixin = MinMaxScaler()
 ) -> pd.DataFrame:
     """Scales time series.
 
@@ -104,6 +104,12 @@ def scale(
         index=time_series.index,
         columns=time_series.columns
     )
+
+
+def use_dataframe_func(time_series, func_name, *args, **kwargs):
+    func = getattr(time_series, func_name)
+    time_series = func(*args, **kwargs)
+    return time_series
 
 
 def to_datetime(
@@ -137,6 +143,44 @@ def to_datetime(
     return time_series
 
 
+def drop_if_equals(
+    time_series: pd.DataFrame,
+    rejected_value: Any,
+    columns: List[str] = None,
+    how: Literal["any", "all"] = "any",
+    axis: int = 1
+) -> pd.DataFrame:
+
+    if columns is None:
+        columns = time_series.columns
+    elif not isinstance(columns, (tuple, list)):
+        ValueError("\"columns\" should be a tuple or a list.")
+
+    is_rejected_value = time_series[columns] == rejected_value
+    if how == "any":
+        to_reject = is_rejected_value.any(axis=axis)
+    elif how == "all":
+        to_reject = is_rejected_value.all(axis=axis)
+    else:
+        raise ValueError(
+            "Unknown \"how\". Value should be \"any\" or \"all\".")
+
+    time_series = time_series[~to_reject]
+
+    return time_series
+
+
+def drop_if_index_equals(
+    time_series: pd.DataFrame,
+    rejected_value: Any
+) -> pd.DataFrame:
+    to_reject = time_series.index == rejected_value
+
+    time_series = time_series[~to_reject]
+
+    return time_series
+
+
 def drop_if_is_in(
     time_series: pd.DataFrame,
     rejected_values: List[Any],
@@ -159,18 +203,89 @@ def drop_if_is_in(
     elif how == "all":
         to_reject = is_rejected_value.all(axis=axis)
     else:
-        raise ValueError("Unknown scope. Value should be \"any\" or \"all\".")
+        raise ValueError(
+            "Unknown \"how\". Value should be \"any\" or \"all\".")
 
     time_series = time_series[~to_reject]
 
     return time_series
 
 
-def use_dataframe_func(time_series, func_name, *args, **kwargs):
-    func = getattr(time_series, func_name)
-    time_series = func(*args, **kwargs)
+def drop_if_index_is_in(
+    time_series: pd.DataFrame,
+    rejected_values: List[Any]
+) -> pd.DataFrame:
+    assert isinstance(rejected_values, (tuple, list)),\
+        "\"rejected_values\" should be a tuple or a list."
+    assert len(rejected_values) > 0, "\"rejected_values\" is empty."
+
+    to_reject = time_series.index.isin(rejected_values)
+    time_series = time_series[~to_reject]
+
     return time_series
 
 
-def select_columns(time_series, columns):
-    return time_series[columns]
+def loc(
+    time_series,
+    rows: List[Any] = None,
+    columns: List[Any] = None,
+    rows_start: Any = None,
+    rows_end: Any = None,
+    columns_start: Any = None,
+    columns_end: Any = None
+) -> pd.DataFrame:
+    # set ranges
+    if rows_start is None:
+        rows_start = time_series.index[0]
+    if rows_end is None:
+        rows_end = time_series.index[-1]
+    if columns_start is None:
+        columns_start = time_series.columns[0]
+    if columns_end is None:
+        columns_end = time_series.columns[-1]
+
+    # apply loc
+    if rows is None and columns is None:
+        time_series =\
+            time_series.loc[rows_start:rows_end, columns_start:columns_end]
+    elif rows is None:
+        time_series = time_series.loc[rows_start:rows_end, columns]
+    elif columns is None:
+        time_series = time_series.loc[rows, columns_start:columns_end]
+    elif rows is not None or columns is not None:
+        time_series = time_series.loc[rows, columns]
+
+    return time_series
+
+
+def iloc(
+    time_series,
+    rows_ids: List[Any] = None,
+    columns_ids: List[Any] = None,
+    rows_start: Any = None,
+    rows_end: Any = None,
+    columns_start: Any = None,
+    columns_end: Any = None
+) -> pd.DataFrame:
+    # set ranges
+    if rows_start is None:
+        rows_start = 0
+    if rows_end is None:
+        rows_end = -1
+    if columns_start is None:
+        columns_start = 0
+    if columns_end is None:
+        columns_end = -1
+
+    # apply iloc
+    if rows_ids is None and columns_ids is None:
+        time_series =\
+            time_series.iloc[rows_start:rows_end, columns_start:columns_end]
+    elif rows_ids is None:
+        time_series = time_series.iloc[rows_start:rows_end, columns_ids]
+    elif columns_ids is None:
+        time_series = time_series.iloc[rows_ids, columns_start:columns_end]
+    elif rows_ids is not None or columns_ids is not None:
+        time_series = time_series.iloc[rows_ids, columns_ids]
+
+    return time_series
