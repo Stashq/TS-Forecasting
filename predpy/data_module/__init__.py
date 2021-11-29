@@ -6,3 +6,4 @@ its and *LightningDataModule* documentation.\n
 """
 # flake8:noqa
 from .time_series_module import TimeSeriesModule
+from .multi_time_series_module import MultiTimeSeriesModule

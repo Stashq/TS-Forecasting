@@ -24,7 +24,12 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
     BaseTimeSeriesDataset : [type]
         Abstract class for time series datasets classes.
     """
-    def __init__(self, sequences: pd.DataFrame, window_size: int, target: str):
+    def __init__(
+        self,
+        sequences: List[pd.DataFrame],
+        window_size: int,
+        target: str
+    ):
         """Creates *MultiTimeSeriesDataset* instance.
 
         Parameters
@@ -67,11 +72,13 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         """
         good_seqs_ids = [
             i for i, seq in enumerate(sequences)
-            if len(seq.shape[0]) > window_size
+            if seq.shape[0] > window_size
         ]
-        assert len(good_seqs_ids) == 0,\
+        assert len(good_seqs_ids) > 0,\
             f"No sequence longer than window size {window_size}"
-        return sequences[good_seqs_ids]
+
+        sequences = [sequences[i] for i in good_seqs_ids]
+        return sequences
 
     def _get_ending_sequences_ids(
         self,
@@ -93,12 +100,11 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             List of starting records indices.
         """
         first_idx = 0
-        record_len = window_size + 1
         ending_ids = []
         for seq in sequences:
-            n_records = seq.shape[0] - record_len
-            ending_ids += [first_idx + n_records]
-            first_idx += 1
+            n_records = seq.shape[0] - window_size
+            ending_ids += [first_idx + n_records - 1]
+            first_idx += n_records
         return ending_ids
 
     def _get_seqs_id_by_global_id(self, idx: int) -> int:
@@ -115,14 +121,14 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         int
             Sequence index containing record with provided global index.
         """
-        assert idx <= self._ending_seqs_ids[-1]\
-            and idx >= 0,\
-            "Record id out of range."
+        if idx > self._ending_seqs_ids[-1] or idx < 0:
+            raise IndexError("Index out of range.")
 
         seqs_id = None
         for i, end_id in enumerate(self._ending_seqs_ids):
-            if idx < end_id:
+            if idx <= end_id:
                 seqs_id = i
+                break
         return seqs_id
 
     def _global_id_to_seq_rec_id(self, idx: int) -> Tuple[int, int]:

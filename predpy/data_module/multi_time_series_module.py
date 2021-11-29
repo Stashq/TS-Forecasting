@@ -1,5 +1,7 @@
 """Lightning data module customized for time series.\n
 
+Al
+
 Split data between training, validation, test datasets and stores them using
 *TimeSeriesDataset* classes.
 """
@@ -7,11 +9,11 @@ import math
 from typing import Union, Tuple, List
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
-from predpy.dataset import SingleTimeSeriesDataset, TimeSeriesDataset
+from predpy.dataset import MultiTimeSeriesDataset, TimeSeriesDataset
 import pandas as pd
 
 
-class TimeSeriesModule(LightningDataModule):
+class MultiTimeSeriesModule(LightningDataModule):
     """Lightning data module customized for time series.
 
     Parameters
@@ -27,13 +29,13 @@ class TimeSeriesModule(LightningDataModule):
         split_proportions: Union[Tuple[float], List[float]],
         window_size: int,
         batch_size: int = 8,
-        DatasetCls: TimeSeriesDataset = SingleTimeSeriesDataset
+        DatasetCls: TimeSeriesDataset = MultiTimeSeriesDataset
     ):
-        """Creates TimeSeriesModule instance.
+        """Creates MultiTimeSeriesModule instance.
 
         Parameters
         ----------
-        sequence : List[pd.DataFrame]
+        sequences : List[pd.DataFrame]
             Time series with same columns.
         dataset_name : str
             A name with which the dataset will be associated.
@@ -59,7 +61,9 @@ class TimeSeriesModule(LightningDataModule):
 
         # setting proportions
         self._proportions_assert(split_proportions)
-        self._save_proportions_as_ids(split_proportions, len(sequences))
+
+        self.n_records = self._get_records_number(sequences, window_size)
+        self._save_proportions_as_ids(split_proportions)
 
         self._ending_seqs_ids = self._get_ending_sequences_ids(
             sequences, window_size)
@@ -75,6 +79,16 @@ class TimeSeriesModule(LightningDataModule):
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
+
+    def _get_records_number(
+        self,
+        sequences: List[pd.DataFrame],
+        window_size: int
+    ) -> int:
+        n_records = sum([
+            seq.shape[0] - window_size for seq in sequences
+        ])
+        return n_records
 
     def _get_ending_sequences_ids(
         self,
@@ -96,12 +110,11 @@ class TimeSeriesModule(LightningDataModule):
             List of starting records indices.
         """
         first_idx = 0
-        record_len = window_size + 1
         ending_ids = []
         for seq in sequences:
-            n_records = seq.shape[0] - record_len
-            ending_ids += [first_idx + n_records]
-            first_idx += 1
+            n_records = seq.shape[0] - window_size
+            ending_ids += [first_idx + n_records - 1]
+            first_idx += n_records
         return ending_ids
 
     def _drop_too_short_seqs(
@@ -126,11 +139,13 @@ class TimeSeriesModule(LightningDataModule):
         """
         good_seqs_ids = [
             i for i, seq in enumerate(sequences)
-            if len(seq.shape[0]) > window_size
+            if seq.shape[0] > window_size
         ]
-        assert len(good_seqs_ids) == 0,\
+        assert len(good_seqs_ids) > 0,\
             f"No sequence longer than window size {window_size}"
-        return sequences[good_seqs_ids]
+
+        sequences = [sequences[i] for i in good_seqs_ids]
+        return sequences
 
     def _proportions_assert(
         self,
@@ -153,8 +168,7 @@ class TimeSeriesModule(LightningDataModule):
 
     def _save_proportions_as_ids(
         self,
-        split_proportions: Union[Tuple[float], List[float]],
-        n_records: int
+        split_proportions: Union[Tuple[float], List[float]]
     ):
         """Saves ranges of training, validation and test datasets.
 
@@ -167,20 +181,20 @@ class TimeSeriesModule(LightningDataModule):
         window_size : int
             Length of sequence in every sample.
         """
-        train_val_split = int(n_records * split_proportions[0])
+        train_val_split = int(self.n_records * split_proportions[0])
         val_test_split =\
-            int(n_records * (split_proportions[0] + split_proportions[1]))
+            int(self.n_records * (split_proportions[0] + split_proportions[1]))
 
-        self.train_range = (0, train_val_split)
+        self.train_range = (0, train_val_split - 1)
         if len(split_proportions) == 3:
             self.val_range = \
-                (train_val_split, val_test_split)
-            self.test_range = (val_test_split, n_records)
+                (train_val_split, val_test_split - 1)
+            self.test_range = (val_test_split, self.n_records - 1)
         elif len(split_proportions) == 2:
             # validation and test datasets will be same
             self.val_range = \
-                (train_val_split, n_records)
-            self.test_range = (train_val_split, n_records)
+                (train_val_split, self.n_records - 1)
+            self.test_range = (train_val_split, self.n_records - 1)
 
     def _get_seqs_id_by_global_id(self, idx: int) -> int:
         """Returns a sequence index containing record with provided global
@@ -196,14 +210,14 @@ class TimeSeriesModule(LightningDataModule):
         int
             Sequence index containing record with provided global index.
         """
-        assert idx <= self._ending_seqs_ids[-1]\
-            and idx >= 0,\
-            "Record id out of range."
+        if idx > self._ending_seqs_ids[-1] or idx < 0:
+            raise IndexError("Index out of range.")
 
         seqs_id = None
         for i, end_id in enumerate(self._ending_seqs_ids):
-            if idx < end_id:
+            if idx <= end_id:
                 seqs_id = i
+                break
         return seqs_id
 
     def _global_id_to_seq_rec_id(self, idx: int) -> Tuple[int, int]:
@@ -280,17 +294,17 @@ class TimeSeriesModule(LightningDataModule):
 
     def setup(self, stage: str = None):
         start, end = self.train_range
+        seqs = self._get_with_records_range(start, end)
         self.train_dataset = self.DatasetCls(
-            self._get_with_records_range(self.sequence[start:end]),
-            self.window_size, self.target)
+            seqs, self.window_size, self.target)
         start, end = self.val_range
+        seqs = self._get_with_records_range(start, end)
         self.val_dataset = self.DatasetCls(
-            self._get_with_records_range(self.sequence[start:end]),
-            self.window_size, self.target)
+            seqs, self.window_size, self.target)
         start, end = self.test_range
+        seqs = self._get_with_records_range(start, end)
         self.test_dataset = self.DatasetCls(
-            self._get_with_records_range(self.sequence[start:end]),
-            self.window_size, self.target)
+            seqs, self.window_size, self.target)
 
     def train_dataloader(self):
         return DataLoader(

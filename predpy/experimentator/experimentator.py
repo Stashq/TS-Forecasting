@@ -25,7 +25,7 @@ from sklearn.base import TransformerMixin
 from string import Template
 
 from predpy.wrapper import Predictor
-from predpy.data_module import TimeSeriesModule
+from predpy.data_module import MultiTimeSeriesModule
 from predpy.preprocessing import load_and_preprocess
 from predpy.preprocessing import fit_scaler
 from predpy.trainer import get_trained_pl_model
@@ -121,7 +121,7 @@ class Experimentator:
     def get_preprocessed_data(
         self,
         dataset_idx: int,
-    ) -> TimeSeriesModule:
+    ) -> MultiTimeSeriesModule:
         """Create time series module.
 
         Takes parameters for dataset with provided index,
@@ -135,15 +135,17 @@ class Experimentator:
 
         Returns
         -------
-        TimeSeriesModule
+        MultiTimeSeriesModule
             Data module created based on provided parameters.
         """
         ds_params = self.datasets_params.iloc[dataset_idx]
         df = load_and_preprocess(
             ds_params.path, ds_params.load_params, ds_params.pipeline)
 
-        tsm = TimeSeriesModule(
-            sequence=df,
+        # TODO: split df if too many data is corrupted
+        sequences = [df]
+        tsm = MultiTimeSeriesModule(
+            sequences=sequences,
             dataset_name=ds_params.name_,
             target=ds_params.target,
             split_proportions=ds_params.split_proportions,
@@ -529,6 +531,7 @@ class Experimentator:
             If True, set file name as dataset name. By default True.
         """
         self.datasets_params[dataset_idx].path = path
+        #  ################ SET NAME ###########################
 
     @staticmethod
     def load_experimentator(path: str) -> Experimentator:

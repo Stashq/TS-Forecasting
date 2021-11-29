@@ -5,8 +5,6 @@ from :py:mod:`module_2` and can be passed to the pipeline (conditions
 described in the module).
 """
 import pandas as pd
-from sklearn.base import TransformerMixin
-from sklearn.preprocessing import MinMaxScaler
 from typing import List, Union, Any, Literal
 
 
@@ -35,75 +33,6 @@ def set_index(
     if to_datetime:
         time_series.index = pd.to_datetime(time_series.index)
     return time_series
-
-
-def fit_scaler(
-    time_series: pd.DataFrame,
-    training_fraction: float,
-    scaler: TransformerMixin = MinMaxScaler()
-) -> TransformerMixin:
-    """Fits a scaler.
-
-    For training purpose takes first *n* input values, where *n*
-    is calculated based on input length and provided fraction.
-    If fraction is negative or greater than 1, raises AssertionError.
-
-    Parameters
-    ----------
-    time_series : pd.DataFrame
-        Transformed time series.
-    training_fraction : float
-        Portion of data to train scaler.
-        Should be non-negative and less or equal 1.
-    scaler : TransformerMixin, optional
-        Scaler instance, by default sklearn MinMaxScaler.
-
-    Returns
-    -------
-    TransformerMixin
-        Fitted scaler.
-    """
-    assert training_fraction >= 0, "Training fraction can't be negative."
-    assert training_fraction <= 1, "Training fraction can't be greater than 1."
-    margin = int(time_series.shape[0] * training_fraction)
-
-    # traning scaler on training data
-    return scaler.fit(time_series[:margin])
-
-
-def scale(
-    time_series: pd.DataFrame,
-    training_fraction: float,
-    scaler: TransformerMixin = MinMaxScaler()
-) -> pd.DataFrame:
-    """Scales time series.
-
-    Uses provided scaler class, by defaily MinMaxScaler.
-    Scaler is trained with first *n* values from input data, where *n* is
-    calculated based on input length and provided fraction.
-
-    Parameters
-    ----------
-    time_series : pd.DataFrame
-        Transformed time series.
-    training_fraction : float
-        Portion of data to train scaler.
-        Should be non-negative and less or equal 1.
-    scaler : TransformerMixin, optional
-        Scaler class, by default sklearn MinMaxScaler.
-
-    Returns
-    -------
-    pd.DataFrame
-        Transformed time series.
-    """
-    scaler = fit_scaler(time_series, training_fraction, scaler)
-
-    return pd.DataFrame(
-        scaler.transform(time_series),
-        index=time_series.index,
-        columns=time_series.columns
-    )
 
 
 def use_dataframe_func(time_series, func_name, *args, **kwargs):
@@ -268,14 +197,14 @@ def iloc(
     columns_end: Any = None
 ) -> pd.DataFrame:
     # set ranges
-    if rows_start is None:
-        rows_start = 0
-    if rows_end is None:
-        rows_end = -1
-    if columns_start is None:
-        columns_start = 0
-    if columns_end is None:
-        columns_end = -1
+    # if rows_start is None:
+    #     rows_start = 0
+    # if rows_end is None:
+    #     rows_end = -1
+    # if columns_start is None:
+    #     columns_start = 0
+    # if columns_end is None:
+    #     columns_end = -1
 
     # apply iloc
     if rows_ids is None and columns_ids is None:

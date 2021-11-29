@@ -18,7 +18,7 @@ after sequence (predicted value).
 # flake8:noqa
 from .load_and_preprocess import load_and_preprocess
 from .preprocessing import (
-    set_index, fit_scaler, scale, drop_if_is_in, use_dataframe_func,
+    set_index, drop_if_is_in, use_dataframe_func,
     drop_if_index_is_in, drop_if_equals, drop_if_index_equals, loc, iloc)
 from .feature_engineering import moving_average
 from .seq_to_records import seq_to_records, Record

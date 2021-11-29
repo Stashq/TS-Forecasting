@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from predpy.dataset import TimeSeriesDataset
 from typing import List, Dict, Tuple, Callable, Any
 import torch
+from sklearn.base import TransformerMixin
 
 
 @dataclass
@@ -24,8 +25,10 @@ class DatasetParams:
     window_size: int
     batch_size: int
     DatasetCls: TimeSeriesDataset
-    pipeline: List[Tuple[Callable, Dict]]
+    drop_refill_pipeline: List[Tuple[Callable, Dict]]
+    preprocessing_pipeline: List[Tuple[Callable, Dict]]
     load_params: Dict[str, Any] = field(default_factory=dict)
+    scaler: TransformerMixin = None
     true_values: List[float] = None
     name_: str = None
 

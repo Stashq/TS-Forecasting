@@ -19,5 +19,5 @@ callbacks,
 * loading and selecting experiments setups and pipelines.
 """
 # flake8:noqa
-from .experimentator import Experimentator
+from .experimentator_previous import Experimentator
 from .experimentator_params import DatasetParams, ModelParams, PredictionRecord
