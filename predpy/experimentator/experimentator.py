@@ -23,11 +23,11 @@ import plotly.graph_objs as go
 from plotly.offline import plot
 from sklearn.base import TransformerMixin
 from string import Template
+import numpy as np
 
 from predpy.wrapper import Predictor
 from predpy.data_module import MultiTimeSeriesModule
 from predpy.preprocessing import load_and_preprocess
-from predpy.preprocessing import fit_scaler
 from predpy.trainer import get_trained_pl_model
 from predpy.trainer import (
     TrainerParams, LoggerParams, EarlyStoppingParams, CheckpointParams,
@@ -140,7 +140,10 @@ class Experimentator:
         """
         ds_params = self.datasets_params.iloc[dataset_idx]
         df = load_and_preprocess(
-            ds_params.path, ds_params.load_params, ds_params.pipeline)
+            ds_params.path, ds_params.load_params,
+            ds_params.drop_refill_pipeline, ds_params.preprocessing_pipeline,
+            ds_params.scaler,
+            training_proportion=ds_params.split_proportions[0])
 
         # TODO: split df if too many data is corrupted
         sequences = [df]
@@ -156,7 +159,7 @@ class Experimentator:
         tsm.setup()
         return tsm
 
-    def experiment_step(
+    def _experiment_step(
         self,
         trainer_params: TrainerParams,
         checkpoint_params: CheckpointParams,
@@ -290,16 +293,10 @@ class Experimentator:
                     continue
 
                 try:
-                    self.experiment_step(
-                        trainer_params,
-                        checkpoint_params,
-                        early_stopping_params,
-                        logger_params,
-                        chp_path,
-                        tsm,
-                        predictions,
-                        ds_idx,
-                        m_idx)
+                    self._experiment_step(
+                        trainer_params, checkpoint_params,
+                        early_stopping_params, logger_params, chp_path,
+                        tsm, predictions, ds_idx, m_idx)
                 except Exception as e:
                     ds_name = self.datasets_params.iloc[ds_idx]["name_"]
                     m_name = self.models_params.iloc[ds_idx]["name_"]
@@ -324,40 +321,18 @@ class Experimentator:
 
         return self
 
-    def save(self, path: str, safe: bool = False):
-        """Save experimentator to pickle file.
-
-        If path to target directory can't be found and *safe* is True,
-        prints message, if *safe* is False, raise *FileNotFoundError*.
-
-        Parameters
-        ----------
-        path : str
-            Path where experimentator instance will be saved.
-        safe : bool, optional
-            Determines whether *FileNotFoundError* will be
-            handled or not. By default False.
-
-        Raises
-        ------
-        file_not_found_error
-            File not found error.
-        """
-        try:
-            pathlib.Path(path).mkdir(parents=True, exist_ok=True)
-            with open(f'{path}/{self.exp_date}.pkl', "wb") as file:
-                pickle.dump(self, file)
-        except FileNotFoundError as file_not_found_error:
-            if safe:
-                print(f"{path} not found.")
-            else:
-                raise file_not_found_error
-
     def get_target_scaler(
         self,
         dataset_idx: int,
-        scaler: TransformerMixin
+        # scaler: TransformerMixin
     ) -> TransformerMixin:
+        return self.datasets_params.iloc[dataset_idx]["scaler"]
+        # df = pd.read_csv(ds_params.path, **ds_params.load_params)
+        # return fit_scaler(
+        #     df[[ds_params.target]],
+        #     ds_params.split_proportions[0],
+        #     scaler
+        # )
         """Creates scaler for target column of selected dataset.
 
         Fits scaler based on training data.
@@ -374,19 +349,65 @@ class Experimentator:
         TransformerMixin
             Fitted scaler.
         """
-        ds_params = self.datasets_params.iloc[dataset_idx]
-        df = pd.read_csv(ds_params.path)
-        return fit_scaler(
-            df[[ds_params.target]],
-            ds_params.split_proportions[0],
-            scaler
-        )
+
+    def _check_if_has_predictions(self):
+        assert self.predictions is not None and self.predictions.shape[0] > 0,\
+            "Before plotting experiments must be runned."
+
+    def _get_models_predictions(
+        self,
+        dataset_idx: int,
+        models_ids: List[int]
+    ) -> pd.DataFrame:
+        self._check_if_has_predictions()
+
+        df = None
+        if models_ids is None:
+            df = self.predictions.loc[
+                self.predictions["dataset_id"] == dataset_idx
+            ]
+        else:
+            df = self.predictions.loc[
+                (self.predictions["dataset_id"] == dataset_idx) &
+                (self.predictions["models_ids"].isin(models_ids))
+            ]
+        return df
+
+    def _rescale_true_vals_and_preds(
+        self,
+        dataset_idx: int,
+        true_vals: List[float],
+        predictions_df: pd.DataFrame,
+        target: str
+    ) -> Tuple[List[float], pd.DataFrame]:
+        scaler = self.get_target_scaler(dataset_idx)
+
+        true_vals = self._scale_inverse(true_vals, scaler, target)
+        predictions_df["predictions"] = \
+            predictions_df[["predictions"]].apply(
+                lambda preds: self._scale_inverse(
+                    preds.tolist()[0], scaler, target),
+                axis=1)
+        return true_vals, predictions_df
+
+    def _true_vals_and_preds_to_plotly_data(
+        self,
+        time_points: pd.Index,
+        true_vals: List[float],
+        predictions_df: pd.DataFrame,
+    ) -> List[go.Scatter]:
+        data = [go.Scatter(x=time_points, y=true_vals, name="True values")]
+        for _, row in predictions_df.iterrows():
+            model_name = self.models_params.iloc[row["model_id"]].name_
+            data += [go.Scatter(x=time_points, y=row["predictions"],
+                                name=model_name)]
+        return data
 
     def plot_predictions(
         self,
         dataset_idx: int,
         models_ids: List[int] = None,
-        scaler: TransformerMixin = None,
+        rescale: bool = False,
         file_path: str = None
     ):
         """Plots selected prediction made during experiment run and true values.
@@ -401,49 +422,29 @@ class Experimentator:
             Group of index of parameters stored in *models_params*.
             If provided, plot only for selected models, if not, plot for
             all models form predictions. By default None.
-        scaler : TransformerMixin, optional
-            Scaler for predicted values. If provided, predictions will be
-            inverse scaled. By default None.
+        rescale : bool = False
+            If True, rescale true values and predictions using scaler
+            assigned to dataset.
         file_path : str, optional
             If type is string, chart will be saved to html file with provided
             path.
         """
-        assert self.predictions is not None and self.predictions.shape[0] > 0,\
-            "Before plotting experiments must be runned."
-
-        df = None
-        if models_ids is None:
-            df = self.predictions.loc[
-                self.predictions["dataset_id"] == dataset_idx
-            ]
-        else:
-            df = self.predictions.loc[
-                (self.predictions["dataset_id"] == dataset_idx) &
-                (self.predictions["models_ids"].isin(models_ids))
-            ]
+        predictions_df = self._get_models_predictions(dataset_idx, models_ids)
         ds_params = self.datasets_params.iloc[dataset_idx]
-
-        x = ds_params.true_values.index.tolist()
+        time_points = ds_params.true_values.index.tolist()
         true_vals = ds_params.true_values.tolist()
+        target = ds_params.target
 
-        if scaler:
-            scaler = self.get_target_scaler(dataset_idx, scaler)
-            true_vals = scaler.inverse_transform([true_vals])[0]
-            df["predictions"] = \
-                df[["predictions"]].apply(
-                    lambda preds: scaler.inverse_transform(preds.tolist())[0],
-                    axis=1)
+        if rescale:
+            self._rescale_true_vals_and_preds(
+                dataset_idx, true_vals, predictions_df, target)
 
-        data = [go.Scatter(x=x, y=true_vals, name="True values")]
-
-        for _, row in df.iterrows():
-            model_name = self.models_params.iloc[row["model_id"]].name_
-            data += [go.Scatter(x=x, y=row["predictions"],
-                                name=model_name)]
+        data = self._true_vals_and_preds_to_plotly_data(
+            time_points, true_vals, predictions_df)
 
         layout = go.Layout(
             title=ds_params.name_,
-            yaxis=dict(title='values'),
+            yaxis=dict(title=target),
             xaxis=dict(title='dates')
         )
 
@@ -452,6 +453,27 @@ class Experimentator:
             plot(fig, filename=file_path)
         else:
             fig.show()
+
+    def _scale_inverse(
+        self,
+        time_series: List[float],
+        scaler: TransformerMixin,
+        target_name: str
+    ) -> List[float]:
+        target_col_idx = np.where(
+            scaler.feature_names_in_ == target_name)[0][0]
+
+        # if scaler was trained on multifeatures data,
+        # we have to fill data with artificial columns
+        # f.e. duplicating target column
+        duplicated_time_series = np.array([
+            [val]*scaler.n_features_in_
+            for val in time_series
+        ])
+
+        result = scaler.inverse_transform(duplicated_time_series)
+        result = result.T[target_col_idx]
+        return result
 
     def retrain_model(
         self,
@@ -530,12 +552,52 @@ class Experimentator:
         set_name : bool, optional
             If True, set file name as dataset name. By default True.
         """
-        self.datasets_params[dataset_idx].path = path
-        #  ################ SET NAME ###########################
+        self.datasets_params.at[dataset_idx, 'path'] = path
+        # TODO: set name in experimentators dataset params
+
+    def save(self, path: str, safe: bool = False):
+        """Save experimentator to pickle file.
+
+        If path to target directory can't be found and *safe* is True,
+        prints message, if *safe* is False, raise *FileNotFoundError*.
+
+        Parameters
+        ----------
+        path : str
+            Path where experimentator instance will be saved.
+        safe : bool, optional
+            Determines whether *FileNotFoundError* will be
+            handled or not. By default False.
+
+        Raises
+        ------
+        file_not_found_error
+            File not found error.
+        """
+        try:
+            pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+            with open(f'{path}/{self.exp_date}.pkl', "wb") as file:
+                pickle.dump(
+                    {
+                        "models_params": self.models_params,
+                        "datasets_params": self.datasets_params,
+                        "learning_params": self.learning_params,
+                        "WrapperCls": self.WrapperCls,
+                        "wrapper_kwargs": self.wrapper_kwargs,
+                        "predictions": self.predictions,
+                        "exp_date": self.exp_date
+                    },
+                    file
+                )
+        except FileNotFoundError as file_not_found_error:
+            if safe:
+                print(f"{path} not found.")
+            else:
+                raise file_not_found_error
 
     @staticmethod
     def load_experimentator(path: str) -> Experimentator:
-        """Loads experimentator instance from file.
+        """Loads experimentator instance with saved attributes.
 
         Parameters
         ----------
@@ -548,4 +610,14 @@ class Experimentator:
             Loaded experimentator instance.
         """
         with open(path, "rb") as file:
-            return pickle.load(file)
+            attrs = pickle.load(file)
+            exp = Experimentator(
+                models_params=attrs["models_params"],
+                datasets_params=attrs["datasets_params"],
+                learning_params=attrs["learning_params"],
+                WrapperCls=attrs["WrapperCls"],
+                wrapper_kwargs=attrs["wrapper_kwargs"]
+            )
+            exp.predictions = attrs["predictions"]
+            exp.exp_date = attrs["exp_date"]
+            return exp

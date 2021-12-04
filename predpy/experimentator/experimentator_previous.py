@@ -552,7 +552,7 @@ class Experimentator:
             If True, set file name as dataset name. By default True.
         """
         self.datasets_params.at[dataset_idx, 'path'] = path
-        #  ################ SET NAME ###########################
+        # TODO: set name in experimentators dataset params
 
     @staticmethod
     def load_experimentator(path: str) -> Experimentator:

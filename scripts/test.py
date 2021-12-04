@@ -66,7 +66,8 @@ datasets_params = [
         split_proportions=[0.8, 0.1, 0.1],
         window_size=window_size,
         batch_size=64,
-        DatasetCls=SingleTimeSeriesDataset,
+        # DatasetCls=SingleTimeSeriesDataset,
+        DatasetCls=MultiTimeSeriesDataset,
         drop_refill_pipeline=drop_refill_pipeline,
         preprocessing_pipeline=preprocessing_pipeline,
         scaler=MinMaxScaler()),
@@ -108,19 +109,22 @@ models_params = [
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 1}),
 ]
 
-chp_p = CheckpointParams(
-    dirpath="../checkpoints", monitor='val_loss', verbose=True,
-    save_top_k=1)
-tr_p = TrainerParams(
-    max_epochs=1, gpus=1, auto_lr_find=True)
-es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=2, verbose=True)
+# chp_p = CheckpointParams(
+#     dirpath="./checkpoints", monitor='val_loss', verbose=True,
+#     save_top_k=1)
+# tr_p = TrainerParams(
+#     max_epochs=1, gpus=1, auto_lr_find=True)
+# es_p = EarlyStoppingParams(
+#     monitor='val_loss', patience=2, verbose=True)
 
-exp = Experimentator(models_params, datasets_params)
+# exp = Experimentator(models_params, datasets_params)
 
-exp.run_experiments(
-    "../lightning_logs", tr_p, chp_p, es_p,
-    experiments_path="../saved_experiments", safe=False)
+# exp.run_experiments(
+#     "./lightning_logs", tr_p, chp_p, es_p,
+#     experiments_path="./saved_experiments", safe=False)
+
+exp = Experimentator.load_experimentator(
+    "saved_experiments/2021-12-04_17:06:28.pkl")
 
 exp.plot_predictions(0, rescale=True)
 x = 0

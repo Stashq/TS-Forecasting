@@ -290,4 +290,4 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         seqs = self._get_with_records_range(start_idx, end_idx)
         labels = pd.concat([
             seq[self.target] for seq in seqs])
-        return labels
+        return labels[self.window_size:]
