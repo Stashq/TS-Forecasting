@@ -104,7 +104,7 @@ def load_and_preprocess(
     if scaler is not None:
         assert training_proportion is not None,\
             "Training proportion not defined."
-        df = scale(df, training_proportion, scaler, return_scaler=True)
+        df = scale(df, training_proportion, scaler)
     return df
 
 
@@ -295,16 +295,13 @@ def fit_scaler(
     assert training_fraction <= 1, "Training fraction can't be greater than 1."
     margin = int(time_series.shape[0] * training_fraction)
 
-    # traning scaler on training data
     scaler.fit(time_series[:margin])
-    # return scaler.fit(time_series[:margin])
 
 
 def scale(
     time_series: pd.DataFrame,
     training_fraction: float,
-    scaler: TransformerMixin = MinMaxScaler(),
-    return_scaler: bool = False
+    scaler: TransformerMixin = MinMaxScaler()
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, TransformerMixin]]:
     """Scales time series.
 
@@ -334,7 +331,4 @@ def scale(
         index=time_series.index,
         columns=time_series.columns
     )
-    # if return_scaler:
-    #     return df, scaler
-    # else:
     return df

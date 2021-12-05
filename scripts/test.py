@@ -1,10 +1,14 @@
+# flake8: noqa
+
 import sys
 from typing import Sequence
 sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
 from predpy.dataset import TimeSeriesRecordsDataset
 from predpy.dataset import SingleTimeSeriesDataset, MultiTimeSeriesDataset
-from predpy.experimentator import Experimentator, DatasetParams, ModelParams
+from predpy.experimentator import (
+    DatasetParams, ModelParams, ExperimentatorPlot,
+    Experimentator, load_experimentator, plot_aggregated_predictions)
 from predpy.preprocessing import set_index
 from predpy.preprocessing import moving_average
 from predpy.preprocessing import (
@@ -53,7 +57,7 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    (iloc, {"rows_end": 400}),
+    # (iloc, {"rows_end": 400}),
 ]
 preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
@@ -92,13 +96,13 @@ models_params = [
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
     #         "max_seq_len": window_size, "n_layers": 2, "fc_dropout": 0.0}),
-    ModelParams(
-        name_="ResNet", cls_=ResNet.ResNet,
-        init_params={"c_in": c_in, "c_out": c_out}),
     # ModelParams(
-    #     name_="LSTM_h200_l1", cls_=RNN.LSTM,
-    #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
+    #     name_="ResNet", cls_=ResNet.ResNet,
+    #     init_params={"c_in": c_in, "c_out": c_out}),
+    ModelParams(
+        name_="LSTM_h200_l1", cls_=RNN.LSTM,
+        init_params={
+            "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
     # ModelParams(
     #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
     #     init_params={
@@ -109,24 +113,37 @@ models_params = [
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 1}),
 ]
 
-# chp_p = CheckpointParams(
-#     dirpath="./checkpoints", monitor='val_loss', verbose=True,
-#     save_top_k=1)
-# tr_p = TrainerParams(
-#     max_epochs=1, gpus=1, auto_lr_find=True)
-# es_p = EarlyStoppingParams(
-#     monitor='val_loss', patience=2, verbose=True)
+chp_p = CheckpointParams(
+    dirpath="./checkpoints", monitor='val_loss', verbose=True,
+    save_top_k=1)
+tr_p = TrainerParams(
+    max_epochs=1, gpus=1, auto_lr_find=True)
+es_p = EarlyStoppingParams(
+    monitor='val_loss', patience=2, verbose=True)
 
-# exp = Experimentator(models_params, datasets_params)
+exp = Experimentator(models_params, datasets_params)
 
 # exp.run_experiments(
 #     "./lightning_logs", tr_p, chp_p, es_p,
 #     experiments_path="./saved_experiments", safe=False)
 
-exp = Experimentator.load_experimentator(
-    "saved_experiments/2021-12-04_17:06:28.pkl")
+# exp.plot_predictions(0, rescale=True)
 
-exp.plot_predictions(0, rescale=True)
+# exp = load_experimentator(
+#     "saved_experiments/2021-12-04_17:06:28.pkl")
+
+# exp2 = load_experimentator(
+#     "saved_experiments/2021-12-04_18:41:59.pkl")
+
+exp.plot_preprocessed_dataset(0, rescale=True)
+
+# plot_aggregated_predictions([
+#     ExperimentatorPlot(exp),
+#     ExperimentatorPlot(exp2)
+# ])
+
+# plot_aggregated_predictions([exp, exp2])
+
 x = 0
 
 # ===========================================================================

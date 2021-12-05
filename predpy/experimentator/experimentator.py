@@ -14,7 +14,7 @@ to reconstruct.
 """
 from __future__ import annotations
 import pytorch_lightning as pl
-from typing import List, Dict, Type, Tuple
+from typing import List, Dict, Type, Tuple, Union
 import time
 import pathlib
 import pickle
@@ -24,6 +24,8 @@ from plotly.offline import plot
 from sklearn.base import TransformerMixin
 from string import Template
 import numpy as np
+from dataclasses import dataclass, field
+from datetime import timedelta
 
 from predpy.wrapper import Predictor
 from predpy.data_module import MultiTimeSeriesModule
@@ -33,7 +35,8 @@ from predpy.trainer import (
     TrainerParams, LoggerParams, EarlyStoppingParams, CheckpointParams,
     LearningParams)
 
-from .experimentator_params import DatasetParams, ModelParams, PredictionRecord
+from .experimentator_params import (
+    DatasetParams, ModelParams, PredictionRecord)
 
 dataset_setup_exception_msg = Template(
     "Error during setup $dataset_idx dataset named $dataset_name.")
@@ -145,8 +148,8 @@ class Experimentator:
             ds_params.scaler,
             training_proportion=ds_params.split_proportions[0])
 
-        # TODO: split df if too many data is corrupted
-        sequences = [df]
+        sequences = self._split_ts_where_breaks(df, max_break=4)
+        sequences = self._filter_too_short(sequences, ds_params.window_size)
         tsm = MultiTimeSeriesModule(
             sequences=sequences,
             dataset_name=ds_params.name_,
@@ -158,6 +161,51 @@ class Experimentator:
         )
         tsm.setup()
         return tsm
+
+    def _split_ts_where_breaks(
+        self,
+        time_series: pd.DataFrame,
+        max_break: Union[int, timedelta] = None
+    ) -> List[pd.DateFrame]:
+        """UWAGA:
+        Oszacowuję krok w serii czasowej na podstawie odległości między dwoma
+        pierwszymi próbkami
+        """
+        index = time_series.index.to_series()
+        diffs = index.diff()
+
+        if max_break is None:
+            max_break = diffs.mode()[0]
+        elif isinstance(max_break, int):
+            time_step = diffs.mode()[0]
+            max_break *= time_step
+
+        splits = diffs[diffs > max_break].index
+        if splits.shape[0] == 0:
+            splitted_time_series = [time_series]
+        else:
+            splitted_time_series = [
+                time_series.loc[:splits[0]]
+            ]
+            splitted_time_series += [
+                time_series.loc[splits[i]:splits[i+1]]
+                for i in range(len(splits)-1)
+            ]
+            splitted_time_series += [
+                time_series.loc[splits[-1]:]
+            ]
+
+        return splitted_time_series
+
+    def _filter_too_short(
+        self,
+        multi_time_series: List[pd.DateFrame],
+        window_size: int
+    ) -> List[pd.DateFrame]:
+        result = list(filter(
+            lambda seq: seq.shape[0] > window_size,
+            multi_time_series))
+        return result
 
     def _experiment_step(
         self,
@@ -369,24 +417,23 @@ class Experimentator:
         else:
             df = self.predictions.loc[
                 (self.predictions["dataset_id"] == dataset_idx) &
-                (self.predictions["models_ids"].isin(models_ids))
+                (self.predictions["model_id"].isin(models_ids))
             ]
         return df
 
     def _rescale_true_vals_and_preds(
         self,
-        dataset_idx: int,
+        scaler_dataset_idx: int,
         true_vals: List[float],
         predictions_df: pd.DataFrame,
         target: str
     ) -> Tuple[List[float], pd.DataFrame]:
-        scaler = self.get_target_scaler(dataset_idx)
-
-        true_vals = self._scale_inverse(true_vals, scaler, target)
+        true_vals = self._scale_inverse(
+            true_vals, scaler_dataset_idx, target)
         predictions_df["predictions"] = \
             predictions_df[["predictions"]].apply(
                 lambda preds: self._scale_inverse(
-                    preds.tolist()[0], scaler, target),
+                    preds.tolist()[0], scaler_dataset_idx, target),
                 axis=1)
         return true_vals, predictions_df
 
@@ -395,13 +442,89 @@ class Experimentator:
         time_points: pd.Index,
         true_vals: List[float],
         predictions_df: pd.DataFrame,
+        version: str = ""
     ) -> List[go.Scatter]:
-        data = [go.Scatter(x=time_points, y=true_vals, name="True values")]
+        data = [go.Scatter(
+            x=time_points, y=true_vals, name="True values" + version)]
         for _, row in predictions_df.iterrows():
             model_name = self.models_params.iloc[row["model_id"]].name_
             data += [go.Scatter(x=time_points, y=row["predictions"],
-                                name=model_name)]
+                                name=model_name + version)]
         return data
+
+    def plot_preprocessed_dataset(
+        self,
+        dataset_idx: int,
+        rescale: bool = False,
+        file_path: str = None,
+        start: int = None,
+        end: int = None
+    ):
+        tsm = self.get_preprocessed_data(dataset_idx)
+
+        ts_with_gaps = []
+        for ts in tsm.sequences:
+            ts_with_gaps += [ts]
+            # adding gap
+            pd.DataFrame(data=[ts.iloc[-1].to_dict()], index=[''])
+        df = pd.concat(ts_with_gaps)
+        df = df.iloc[start:end]
+
+        tsm.split_proportions
+
+        if rescale:
+            df[df.columns] = self._scale_inverse(df, dataset_idx)
+
+        data = []
+        for col in df.columns:
+            data += [go.Scatter(
+                x=df.index, y=df[col], name=col, connectgaps=False)]
+
+        layout = go.Layout(
+            title=self.datasets_params.iloc[dataset_idx].name_,
+            yaxis=dict(title="values"),
+            xaxis=dict(title='dates')
+        )
+
+        fig = go.Figure(data=data, layout=layout)
+
+        # plotting v-lines splitting train, val and test datasets
+        val_start = tsm.val_range[0]
+        test_start = tsm.test_range[0]
+        val_add = 0
+        test_add = 0
+        counter = 0
+        for ts in tsm.sequences:
+            counter += ts.shape[0]
+            if val_start >= counter:
+                val_add += 1
+            if test_start >= counter:
+                test_add += 1
+        val_start += val_add
+        test_start += test_start
+        if start is None:
+            start = 0
+        if end is None:
+            end = df.shape[0]
+        if val_start >= start and val_start < end:
+            fig.add_vline(
+                x=df.iloc[val_start].index,
+                line_width=3,
+                line_dash="dash",
+                line_color="blue"
+            )
+        if test_start >= start and test_start < end:
+            fig.add_vline(
+                x=df.iloc[test_start].index,
+                line_width=3,
+                line_dash="dash",
+                line_color="red"
+            )
+
+        if isinstance(file_path, str):
+            plot(fig, filename=file_path)
+        else:
+            fig.show()
 
     def plot_predictions(
         self,
@@ -456,23 +579,28 @@ class Experimentator:
 
     def _scale_inverse(
         self,
-        time_series: List[float],
-        scaler: TransformerMixin,
-        target_name: str
+        time_series: Union[List[float], pd.DataFrame],
+        scaler_dataset_idx: int,
+        target_name: str = None
     ) -> List[float]:
-        target_col_idx = np.where(
-            scaler.feature_names_in_ == target_name)[0][0]
+        scaler = self.get_target_scaler(scaler_dataset_idx)
 
-        # if scaler was trained on multifeatures data,
-        # we have to fill data with artificial columns
-        # f.e. duplicating target column
-        duplicated_time_series = np.array([
-            [val]*scaler.n_features_in_
-            for val in time_series
-        ])
+        result = None
+        if target_name is not None and isinstance(time_series, list):
+            target_col_idx = np.where(
+                scaler.feature_names_in_ == target_name)[0][0]
+            # if scaler was trained on multifeatures data,
+            # we have to fill data with artificial columns
+            # f.e. duplicating target column
+            duplicated_time_series = np.array([
+                [val]*scaler.n_features_in_
+                for val in time_series
+            ])
+            result = scaler.inverse_transform(duplicated_time_series)
+            result = result.T[target_col_idx]
+        else:
+            result = scaler.inverse_transform(time_series)
 
-        result = scaler.inverse_transform(duplicated_time_series)
-        result = result.T[target_col_idx]
         return result
 
     def retrain_model(
@@ -595,29 +723,108 @@ class Experimentator:
             else:
                 raise file_not_found_error
 
-    @staticmethod
-    def load_experimentator(path: str) -> Experimentator:
-        """Loads experimentator instance with saved attributes.
 
-        Parameters
-        ----------
-        path : str
-            Path to file.
+# @staticmethod
+def load_experimentator(path: str) -> Experimentator:
+    """Loads experimentator instance with saved attributes.
 
-        Returns
-        -------
-        Experimentator
-            Loaded experimentator instance.
-        """
-        with open(path, "rb") as file:
-            attrs = pickle.load(file)
-            exp = Experimentator(
-                models_params=attrs["models_params"],
-                datasets_params=attrs["datasets_params"],
-                learning_params=attrs["learning_params"],
-                WrapperCls=attrs["WrapperCls"],
-                wrapper_kwargs=attrs["wrapper_kwargs"]
-            )
-            exp.predictions = attrs["predictions"]
-            exp.exp_date = attrs["exp_date"]
-            return exp
+    Parameters
+    ----------
+    path : str
+        Path to file.
+
+    Returns
+    -------
+    Experimentator
+        Loaded experimentator instance.
+    """
+    with open(path, "rb") as file:
+        attrs = pickle.load(file)
+        exp = Experimentator(
+            models_params=attrs["models_params"],
+            datasets_params=attrs["datasets_params"],
+            learning_params=attrs["learning_params"],
+            WrapperCls=attrs["WrapperCls"],
+            wrapper_kwargs=attrs["wrapper_kwargs"]
+        )
+        exp.predictions = attrs["predictions"]
+        exp.exp_date = attrs["exp_date"]
+        return exp
+
+
+@dataclass
+class ExperimentatorPlot:
+    '''Data class representing experimentator plotting parameters
+
+    *datasets_to_models* should be a List of dictionaries mapping every
+    dataset to models which predictions you want to plot.
+    '''
+    experimentator: Experimentator
+    datasets_to_models: Dict[int, List[int]] = field(default_factory=list)
+    rescale: bool = True
+
+
+def plot_aggregated_predictions(
+    exps_params:
+        Union[List[Experimentator], List[ExperimentatorPlot]],
+    file_path: str = None
+):
+    """Plots selected prediction from list of experimentator.
+    To point which predictions should be plotted, use ExperimentatorPlot.
+    ExperimentatorPlot without set *datasets_to_models* cause all
+    experimentator predictions plotting, the same as passing list of
+    *Experimentator* instead of list of *ExperimentatorPlot*.
+
+    Parameters
+    ----------
+    exps : Union[List[Experimentator], List[ExperimentatorPlot]]
+        List of experimentators or list of experimentators plot params.
+    file_path : str, optional
+        If type is string, chart will be saved to html file with provided
+        path.
+    """
+    data = []
+
+    for exp_params in exps_params:
+        exp, rescale, datasets_to_models = None, None, None
+        if isinstance(exp_params, Experimentator):
+            exp = exp_params
+            rescale = True
+            datasets_to_models = []
+        else:
+            exp = exp_params.experimentator
+            datasets_to_models = exp_params.datasets_to_models
+            rescale = exp_params.rescale
+
+        if len(datasets_to_models) == 0:
+            datasets_to_models = {
+                ds_idx: exp.models_params.index.tolist()
+                for ds_idx in exp.datasets_params.index.tolist()
+            }
+        for dataset_idx, models_ids in datasets_to_models.items():
+            predictions_df = exp._get_models_predictions(
+                dataset_idx, models_ids)
+            ds_params = exp.datasets_params.iloc[dataset_idx]
+            time_points = ds_params.true_values.index.tolist()
+            true_vals = ds_params.true_values.tolist()
+            target = ds_params.target
+
+            if rescale:
+                exp._rescale_true_vals_and_preds(
+                    dataset_idx, true_vals, predictions_df, target)
+
+            data += exp._true_vals_and_preds_to_plotly_data(
+                time_points, true_vals, predictions_df,
+                model_version=f", exp: {exp.exp_date}, ds: {dataset_idx}")
+
+    layout = go.Layout(
+        title=ds_params.name_,
+        yaxis=dict(title=target),
+        xaxis=dict(title='dates')
+    )
+
+    fig = go.Figure(data=data, layout=layout)
+    if isinstance(file_path, str):
+        plot(fig, filename=file_path)
+    else:
+        fig.show()
