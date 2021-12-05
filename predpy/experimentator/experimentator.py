@@ -25,7 +25,7 @@ from sklearn.base import TransformerMixin
 from string import Template
 import numpy as np
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from predpy.wrapper import Predictor
 from predpy.data_module import MultiTimeSeriesModule
@@ -463,14 +463,59 @@ class Experimentator:
         tsm = self.get_preprocessed_data(dataset_idx)
 
         ts_with_gaps = []
+        train_end = tsm.train_range[1]
+        val_start, val_end = tsm.val_range
+        test_start = tsm.test_range[0]
+
+        train_end_add = 0
+        val_start_add, val_end_add = 0, 0
+        test_start_add = 0
+
+        start_add = 0
+        end_add = 0
+        counter = 0
+        if start is None:
+            start = 0
+        if end is None:
+            end = tsm.test_range[1] + 1 + tsm.window_size
+
         for ts in tsm.sequences:
             ts_with_gaps += [ts]
             # adding gap
             pd.DataFrame(data=[ts.iloc[-1].to_dict()], index=[''])
+
+            # take into account gap
+            counter += ts.shape[0]
+
+            if train_end >= counter:
+                train_end_add += 1
+
+            if val_start >= counter:
+                val_start_add += 1
+            if val_end >= counter:
+                val_end_add += 1
+
+            if test_start >= counter:
+                test_start_add += 1
+
+            if start >= counter:
+                start_add += 1
+            if end > counter:
+                end_add += 1
+
+        train_end += train_end_add + tsm.window_size
+
+        val_start += val_start_add
+        val_end += val_end_add + tsm.window_size
+
+        test_start += test_start_add
+
+        end += end_add
+        start += start_add
+
+        # time series dataframe concatenation
         df = pd.concat(ts_with_gaps)
         df = df.iloc[start:end]
-
-        tsm.split_proportions
 
         if rescale:
             df[df.columns] = self._scale_inverse(df, dataset_idx)
@@ -488,43 +533,42 @@ class Experimentator:
 
         fig = go.Figure(data=data, layout=layout)
 
-        # plotting v-lines splitting train, val and test datasets
-        val_start = tsm.val_range[0]
-        test_start = tsm.test_range[0]
-        val_add = 0
-        test_add = 0
-        counter = 0
-        for ts in tsm.sequences:
-            counter += ts.shape[0]
-            if val_start >= counter:
-                val_add += 1
-            if test_start >= counter:
-                test_add += 1
-        val_start += val_add
-        test_start += test_start
-        if start is None:
-            start = 0
-        if end is None:
-            end = df.shape[0]
-        if val_start >= start and val_start < end:
-            fig.add_vline(
-                x=df.iloc[val_start].index,
-                line_width=3,
-                line_dash="dash",
-                line_color="blue"
-            )
-        if test_start >= start and test_start < end:
-            fig.add_vline(
-                x=df.iloc[test_start].index,
-                line_width=3,
-                line_dash="dash",
-                line_color="red"
-            )
+        # adding v-lines splitting train, val and test datasets
+        start = df.index[start]
+        end = df.index[end-1]
+        self._add_dataset_type_vrect(
+            fig, df.index[0], df.index[train_end], start, end,
+            fillcolor="blue", opacity=0.3, layer="below", line_width=1,
+            annotation_text="train labels")
+        self._add_dataset_type_vrect(
+            fig, df.index[val_start], df.index[val_end], start, end,
+            fillcolor="yellow", opacity=0.3, layer="below", line_width=1,
+            annotation_text="validation labels")
+        self._add_dataset_type_vrect(
+            fig, df.index[test_start], df.index[-1], start, end,
+            fillcolor="red", opacity=0.3, layer="below", line_width=1,
+            annotation_text="test labels")
 
         if isinstance(file_path, str):
             plot(fig, filename=file_path)
         else:
             fig.show()
+
+    def _add_dataset_type_vrect(
+        self,
+        fig: go.Figure,
+        x0: Union[datetime, int],
+        x1: Union[datetime, int],
+        start: Union[datetime, int],
+        end: Union[datetime, int],
+        **kwargs
+    ):
+        if x0 < start:
+            x0 = start
+        if x1 > end:
+            x1 = end
+        if x0 < x1:
+            fig.add_vrect(x0=x0, x1=x1, **kwargs)
 
     def plot_predictions(
         self,

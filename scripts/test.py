@@ -57,7 +57,7 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    # (iloc, {"rows_end": 400}),
+    (iloc, {"rows_end": 2366}),
 ]
 preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
@@ -135,7 +135,7 @@ exp = Experimentator(models_params, datasets_params)
 # exp2 = load_experimentator(
 #     "saved_experiments/2021-12-04_18:41:59.pkl")
 
-exp.plot_preprocessed_dataset(0, rescale=True)
+exp.plot_preprocessed_dataset(0, rescale=True) #, file_path="household_power_consumption.html")
 
 # plot_aggregated_predictions([
 #     ExperimentatorPlot(exp),
