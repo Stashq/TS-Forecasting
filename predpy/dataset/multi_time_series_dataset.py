@@ -75,7 +75,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             if seq.shape[0] > window_size
         ]
         assert len(good_seqs_ids) > 0,\
-            f"No sequence longer than window size {window_size}"
+            f"No sequence longer than window size {window_size}."
 
         sequences = [sequences[i] for i in good_seqs_ids]
         return sequences

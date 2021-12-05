@@ -57,7 +57,7 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    (iloc, {"rows_end": 2366}),
+    (iloc, {"rows_end": 1500}),
 ]
 preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
@@ -96,13 +96,13 @@ models_params = [
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
     #         "max_seq_len": window_size, "n_layers": 2, "fc_dropout": 0.0}),
-    # ModelParams(
-    #     name_="ResNet", cls_=ResNet.ResNet,
-    #     init_params={"c_in": c_in, "c_out": c_out}),
     ModelParams(
-        name_="LSTM_h200_l1", cls_=RNN.LSTM,
-        init_params={
-            "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
+        name_="ResNet", cls_=ResNet.ResNet,
+        init_params={"c_in": c_in, "c_out": c_out}),
+    # ModelParams(
+    #     name_="LSTM_h200_l1", cls_=RNN.LSTM,
+    #     init_params={
+    #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
     # ModelParams(
     #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
     #     init_params={
@@ -123,9 +123,9 @@ es_p = EarlyStoppingParams(
 
 exp = Experimentator(models_params, datasets_params)
 
-# exp.run_experiments(
-#     "./lightning_logs", tr_p, chp_p, es_p,
-#     experiments_path="./saved_experiments", safe=False)
+exp.run_experiments(
+    "./lightning_logs", tr_p, chp_p, es_p,
+    experiments_path="./saved_experiments", safe=False)
 
 # exp.plot_predictions(0, rescale=True)
 

@@ -1,6 +1,6 @@
 """Lightning data module customized for time series.\n
 
-Al
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! (coś o multi a nie single)
 
 Split data between training, validation, test datasets and stores them using
 *TimeSeriesDataset* classes.
@@ -11,6 +11,11 @@ from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from predpy.dataset import MultiTimeSeriesDataset, TimeSeriesDataset
 import pandas as pd
+from string import Template
+
+NOT_ENOUGH_RECORDS = Template("Not enough records. \
+If $n_splits dataset types, dataset should\
+contain at least $min_n_records records.")
 
 
 class MultiTimeSeriesModule(LightningDataModule):
@@ -29,7 +34,8 @@ class MultiTimeSeriesModule(LightningDataModule):
         split_proportions: Union[Tuple[float], List[float]],
         window_size: int,
         batch_size: int = 8,
-        DatasetCls: TimeSeriesDataset = MultiTimeSeriesDataset
+        DatasetCls: TimeSeriesDataset = MultiTimeSeriesDataset,
+        overlapping: bool = False
     ):
         """Creates MultiTimeSeriesModule instance.
 
@@ -59,15 +65,6 @@ class MultiTimeSeriesModule(LightningDataModule):
         assert len(sequences) > 0, "No time series passed"
         sequences = self._drop_too_short_seqs(sequences, window_size)
 
-        # setting proportions
-        self._proportions_assert(split_proportions)
-
-        self.n_records = self._get_records_number(sequences, window_size)
-        self._save_proportions_as_ids(split_proportions)
-
-        self._ending_seqs_ids = self._get_ending_sequences_ids(
-            sequences, window_size)
-
         self.split_proportions = split_proportions
         self.sequences = sequences
         self.name_ = dataset_name
@@ -75,6 +72,18 @@ class MultiTimeSeriesModule(LightningDataModule):
         self.window_size = window_size
         self.batch_size = batch_size
         self.DatasetCls = DatasetCls
+        self.overlapping = overlapping
+
+        # setting proportions
+        self._proportions_assert(split_proportions)
+
+        self.n_records, self.n_overlapping_records = self._get_records_number(
+            sequences, window_size, split_proportions)
+
+        self._save_proportions_as_ids(split_proportions, overlapping)
+
+        self._ending_seqs_ids = self._get_ending_sequences_ids(
+            sequences, window_size)
 
         self.train_dataset = None
         self.val_dataset = None
@@ -83,19 +92,28 @@ class MultiTimeSeriesModule(LightningDataModule):
     def _get_records_number(
         self,
         sequences: List[pd.DataFrame],
-        window_size: int
-    ) -> int:
+        window_size: int,
+        split_proportions: Union[Tuple[float], List[float]]
+    ) -> Tuple[int]:
         n_records = sum([
             seq.shape[0] - window_size for seq in sequences
         ])
-        return n_records
+        # removing overlapping records
+        n_splits = len(split_proportions)
+        n_overlapping_records =\
+            (n_splits - 1) * (window_size - 1)
+        if n_records < n_splits:
+            min_n_records = n_splits + n_overlapping_records
+            raise ValueError(NOT_ENOUGH_RECORDS.substitute(
+                n_splits=n_splits, min_n_records=min_n_records))
+        return n_records, n_overlapping_records
 
     def _get_ending_sequences_ids(
         self,
         sequences: List[pd.DataFrame],
         window_size: int
     ) -> List[int]:
-        """Specifies records indices ending each time series dataframe.
+        """Specifies records global indices ending each time series dataframe.
 
         Parameters
         ----------
@@ -168,10 +186,14 @@ class MultiTimeSeriesModule(LightningDataModule):
 
     def _save_proportions_as_ids(
         self,
-        split_proportions: Union[Tuple[float], List[float]]
+        split_proportions: Union[Tuple[float], List[float]],
+        overlapping: bool = False
     ):
         """Saves ranges of training, validation and test datasets.
 
+        If *overlapping* is False, prevent different datasets types from
+        overlapping. This can cause leaving some data between dataset without
+        dataset.
         Parameters
         ----------
         split_proportions : Union[Tuple[float], List[float]]
@@ -181,20 +203,47 @@ class MultiTimeSeriesModule(LightningDataModule):
         window_size : int
             Length of sequence in every sample.
         """
-        train_val_split = int(self.n_records * split_proportions[0])
-        val_test_split =\
-            int(self.n_records * (split_proportions[0] + split_proportions[1]))
+        if overlapping:
+            train_val_split = int(self.n_records * split_proportions[0])
+            val_test_split = int(
+                self.n_records * (split_proportions[0] + split_proportions[1]))
 
-        self.train_range = (0, train_val_split - 1)
-        if len(split_proportions) == 3:
-            self.val_range = \
-                (train_val_split, val_test_split - 1)
-            self.test_range = (val_test_split, self.n_records - 1)
-        elif len(split_proportions) == 2:
-            # validation and test datasets will be same
-            self.val_range = \
-                (train_val_split, self.n_records - 1)
-            self.test_range = (train_val_split, self.n_records - 1)
+            self.train_range = (0, train_val_split - 1)
+            if len(split_proportions) == 3:
+                self.val_range = \
+                    (train_val_split, val_test_split - 1)
+                self.test_range = (val_test_split, self.n_records - 1)
+            elif len(split_proportions) == 2:
+                # validation and test datasets will be same
+                self.val_range = \
+                    (train_val_split, self.n_records - 1)
+                self.test_range = (train_val_split, self.n_records - 1)
+        else:
+            # setting records range based on not overlapping n records
+            n_records = self.n_records - self.n_overlapping_records
+            overlap = self.window_size - 1
+
+            val_test_split = int(
+                n_records * (split_proportions[0] + split_proportions[1])
+                + overlap)
+
+            train_end = int(n_records * split_proportions[0])
+            self.train_range = (0, train_end - 1)
+            if len(split_proportions) == 3:
+                val_start = train_end + overlap
+                val_end = int(val_start + n_records * split_proportions[1])
+                self.val_range = (val_start, val_end - 1)
+
+                test_start = val_end + overlap
+                test_end = int(test_start + n_records * split_proportions[2])
+                self.test_range = (test_start, test_end)
+            elif len(split_proportions) == 2:
+                # validation and test datasets will be same
+                val_test_start = train_end + overlap
+                val_test_end = int(
+                    val_test_start + n_records * split_proportions[1])
+                self.val_range = (val_test_start, val_test_end - 1)
+                self.test_range = (val_test_start, val_test_end - 1)
 
     def _get_seqs_id_by_global_id(self, idx: int) -> int:
         """Returns a sequence index containing record with provided global

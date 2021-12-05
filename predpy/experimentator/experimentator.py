@@ -539,15 +539,15 @@ class Experimentator:
         self._add_dataset_type_vrect(
             fig, df.index[0], df.index[train_end], start, end,
             fillcolor="blue", opacity=0.3, layer="below", line_width=1,
-            annotation_text="train labels")
+            annotation_text="train")
         self._add_dataset_type_vrect(
             fig, df.index[val_start], df.index[val_end], start, end,
             fillcolor="yellow", opacity=0.3, layer="below", line_width=1,
-            annotation_text="validation labels")
+            annotation_text="validation")
         self._add_dataset_type_vrect(
             fig, df.index[test_start], df.index[-1], start, end,
             fillcolor="red", opacity=0.3, layer="below", line_width=1,
-            annotation_text="test labels")
+            annotation_text="test")
 
         if isinstance(file_path, str):
             plot(fig, filename=file_path)

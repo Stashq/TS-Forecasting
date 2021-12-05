@@ -150,3 +150,5 @@ data/*
 # notebooks outputs
 notebooks/*
 !notebooks/*.ipynb
+
+pages
