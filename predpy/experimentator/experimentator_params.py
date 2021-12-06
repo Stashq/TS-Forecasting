@@ -8,8 +8,9 @@ part).
 from dataclasses import dataclass, field
 from predpy.dataset import TimeSeriesDataset
 from typing import List, Dict, Tuple, Callable, Any
-import torch
 from sklearn.base import TransformerMixin
+import pandas as pd
+import torch
 
 
 @dataclass
@@ -51,4 +52,4 @@ class PredictionRecord:
     '''
     dataset_id: int
     model_id: int
-    predictions: List[float]
+    predictions: pd.DataFrame

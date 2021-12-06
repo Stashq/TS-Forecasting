@@ -57,7 +57,8 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    (iloc, {"rows_end": 1500}),
+    # (iloc, {"rows_end": 1500}),
+    # (iloc, {"rows_start": -20000}),
 ]
 preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
@@ -96,13 +97,13 @@ models_params = [
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
     #         "max_seq_len": window_size, "n_layers": 2, "fc_dropout": 0.0}),
-    ModelParams(
-        name_="ResNet", cls_=ResNet.ResNet,
-        init_params={"c_in": c_in, "c_out": c_out}),
     # ModelParams(
-    #     name_="LSTM_h200_l1", cls_=RNN.LSTM,
-    #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
+    #     name_="ResNet", cls_=ResNet.ResNet,
+    #     init_params={"c_in": c_in, "c_out": c_out}),
+    ModelParams(
+        name_="LSTM_h200_l1", cls_=RNN.LSTM,
+        init_params={
+            "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
     # ModelParams(
     #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
     #     init_params={
@@ -127,22 +128,23 @@ exp.run_experiments(
     "./lightning_logs", tr_p, chp_p, es_p,
     experiments_path="./saved_experiments", safe=False)
 
-# exp.plot_predictions(0, rescale=True)
-
 # exp = load_experimentator(
-#     "saved_experiments/2021-12-04_17:06:28.pkl")
+#     "saved_experiments/2021-12-06_03:46:14.pkl")
+
+exp.plot_predictions(0, rescale=True)
+
+# exp1 = load_experimentator(
+#     "saved_experiments/2021-12-06_03:46:14.pkl")
 
 # exp2 = load_experimentator(
-#     "saved_experiments/2021-12-04_18:41:59.pkl")
-
-exp.plot_preprocessed_dataset(0, rescale=True) #, file_path="household_power_consumption.html")
+#     "saved_experiments/2021-12-06_03:46:14.pkl")
 
 # plot_aggregated_predictions([
-#     ExperimentatorPlot(exp),
+#     ExperimentatorPlot(exp1),
 #     ExperimentatorPlot(exp2)
 # ])
 
-# plot_aggregated_predictions([exp, exp2])
+# plot_aggregated_predictions([exp1, exp2])
 
 x = 0
 

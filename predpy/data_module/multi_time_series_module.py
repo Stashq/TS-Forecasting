@@ -30,7 +30,7 @@ class MultiTimeSeriesModule(LightningDataModule):
         self,
         sequences: List[pd.DataFrame],
         dataset_name: str,
-        target: str,
+        target: Union[str, List[str]],
         split_proportions: Union[Tuple[float], List[float]],
         window_size: int,
         batch_size: int = 8,

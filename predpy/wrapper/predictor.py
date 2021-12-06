@@ -7,7 +7,6 @@ it target value named "label". Compatibile with :py:mod:`dataset`.
 from pytorch_lightning import LightningModule
 import torch
 from torch import nn, optim
-import matplotlib.pyplot as plt
 from typing import Dict
 from torch.utils.data import DataLoader
 from sklearn.base import TransformerMixin
@@ -82,7 +81,7 @@ class Predictor(LightningModule):
     def predict(self, sequence):
         with torch.no_grad():
             _, output = self(sequence)
-            return output.squeeze().tolist()
+            return output.tolist()
 
     def get_dataset_predictions(
         self,
@@ -93,30 +92,9 @@ class Predictor(LightningModule):
         preds = []
 
         for data in tqdm(dataloader, desc="Making predictions"):
-            tmp = self.predict(data["sequence"])
-            preds += tmp
+            preds += self.predict(data["sequence"])
 
         if scaler is not None:
-            preds = scaler.inverse_transform([preds]).tolist()[0]
+            preds = scaler.inverse_transform([preds]).tolist()
 
         return preds
-
-    def predict_and_plot(
-        self,
-        dataloader: DataLoader,
-        target: str,
-        scaler: TransformerMixin = None
-    ):
-        self.eval()
-        preds = self.get_dataset_predictions(dataloader, scaler)
-
-        labels = dataloader.dataset.get_labels()
-        x, true_vals = labels.index, labels[target]
-
-        if scaler is not None:
-            true_vals = scaler.inverse_transform([true_vals])[0]
-
-        plt.plot(x, preds, label="predictions")
-        plt.plot(x, true_vals, label="true values")
-        plt.legend()
-        plt.show()

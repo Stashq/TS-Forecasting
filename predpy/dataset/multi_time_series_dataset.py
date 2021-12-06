@@ -6,7 +6,7 @@ usage. Created object is much lighter than *TimeSeriesRecodsDataset* object.
 import torch
 import pandas as pd
 from .time_series_dataset import TimeSeriesDataset
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 
 class MultiTimeSeriesDataset(TimeSeriesDataset):
@@ -28,7 +28,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         self,
         sequences: List[pd.DataFrame],
         window_size: int,
-        target: str
+        target: Union[str, List[str]]
     ):
         """Creates *MultiTimeSeriesDataset* instance.
 
@@ -194,7 +194,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
     def __getitem__(self, idx: int) -> Dict[torch.Tensor, torch.Tensor]:
         """Returns dict of:
         * sequence - sequence starting from indicated position,
-        * label - target value followed after sequence.
+        * label - target value/-s followed after sequence.
 
         Parameters
         ----------
@@ -265,7 +265,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         self,
         start_idx: int = None,
         end_idx: int = None
-    ) -> pd.Series:
+    ) -> Union[pd.Series, pd.DataFrame]:
         """Returns dataset labels from provided range.\n
 
         If start_idx is None, range will start from 0,
@@ -289,5 +289,5 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             end_idx = self._ending_seqs_ids[-1]
         seqs = self._get_with_records_range(start_idx, end_idx)
         labels = pd.concat([
-            seq[self.target] for seq in seqs])
-        return labels[self.window_size:]
+            seq[self.target].iloc[self.window_size:] for seq in seqs])
+        return labels

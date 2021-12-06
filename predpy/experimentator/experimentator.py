@@ -164,13 +164,9 @@ class Experimentator:
 
     def _split_ts_where_breaks(
         self,
-        time_series: pd.DataFrame,
+        time_series: Union[pd.Series, pd.DataFrame],
         max_break: Union[int, timedelta] = None
-    ) -> List[pd.DateFrame]:
-        """UWAGA:
-        Oszacowuję krok w serii czasowej na podstawie odległości między dwoma
-        pierwszymi próbkami
-        """
+    ) -> Union[pd.Series, pd.DataFrame]:
         index = time_series.index.to_series()
         diffs = index.diff()
 
@@ -212,12 +208,12 @@ class Experimentator:
         trainer_params: TrainerParams,
         checkpoint_params: CheckpointParams,
         early_stopping_params: EarlyStoppingParams,
-        logger_params,
-        chp_path,
-        tsm,
-        predictions,
-        ds_idx,
-        m_idx
+        logger_params: LoggerParams,
+        chp_path: str,
+        tsm: MultiTimeSeriesModule,
+        predictions: pd.DataFrame,
+        ds_idx: int,
+        m_idx: int
     ):
         pl.seed_everything(42)
 
@@ -237,14 +233,24 @@ class Experimentator:
             early_stopping_params=early_stopping_params,
             learning_params=self.learning_params,
             WrapperCls=self.WrapperCls,
-            wrapper_kwargs=self.wrapper_kwargs
-            )
+            wrapper_kwargs=self.wrapper_kwargs)
 
         # collecting model prediction on test dataset
         preds = pl_model.get_dataset_predictions(tsm.test_dataloader())
+        labels = tsm.test_dataloader().dataset.get_labels()
+
+        if isinstance(labels, pd.DataFrame):
+            columns = labels.columns
+        else:
+            columns = [labels.name]
+
+        df = pd.DataFrame(
+            data=preds, columns=columns, index=labels.index
+        )
+
         predictions.append(
             PredictionRecord(
-                dataset_id=ds_idx, model_id=m_idx, predictions=preds
+                dataset_id=ds_idx, model_id=m_idx, predictions=df
             ))
 
     def _deliver_exception(self, msg, exception, safe):
@@ -424,32 +430,74 @@ class Experimentator:
     def _rescale_true_vals_and_preds(
         self,
         scaler_dataset_idx: int,
-        true_vals: List[float],
+        true_vals: Union[pd.Series, pd.DataFrame],
         predictions_df: pd.DataFrame,
         target: str
     ) -> Tuple[List[float], pd.DataFrame]:
-        true_vals = self._scale_inverse(
+        vals = self._scale_inverse(
             true_vals, scaler_dataset_idx, target)
-        predictions_df["predictions"] = \
-            predictions_df[["predictions"]].apply(
+        # predictions_df["predictions"] = \
+        predictions = \
+            predictions_df["predictions"].apply(
                 lambda preds: self._scale_inverse(
-                    preds.tolist()[0], scaler_dataset_idx, target),
-                axis=1)
-        return true_vals, predictions_df
+                    preds, scaler_dataset_idx, target))
+        return vals, predictions
+
+    def _concat_dfs_with_gaps(
+        self,
+        dfs: Union[List[pd.Series], List[pd.DataFrame]],
+    ) -> pd.DataFrame:
+        dfs_with_gaps = []
+        if isinstance(dfs[0], pd.DataFrame):
+            for df in dfs:
+                dfs_with_gaps += [
+                    df, pd.DataFrame(data=[df.iloc[0]], index=[''])]
+        else:
+            for df in dfs:
+                dfs_with_gaps += [
+                    df,
+                    pd.Series(data=[df.iloc[0]], index=[''], name=df.name)]
+        return pd.concat(dfs_with_gaps)
+
+    def _preds_to_plotly_data(
+        self,
+        preds: Union[pd.Series, pd.DataFrame],
+        name: str,
+        version: str = ""
+    ) -> List[go.Scatter]:
+        data = []
+        if isinstance(preds, pd.Series):
+            data += [go.Scatter(
+                x=preds.index, y=preds, connectgaps=False,
+                name=name + version)]
+        elif isinstance(preds, pd.DataFrame):
+            if len(preds.columns) > 1:
+                data += [go.Scatter(
+                        x=preds.index, y=preds[col], connectgaps=False,
+                        name=name + f"-{col}" + version)
+                    for col in preds.columns
+                ]
+            else:
+                data += [go.Scatter(
+                    x=preds.index, y=preds.iloc[:, 0], connectgaps=False,
+                    name=name + version)]
+        return data
 
     def _true_vals_and_preds_to_plotly_data(
         self,
-        time_points: pd.Index,
-        true_vals: List[float],
+        true_vals: Union[pd.Series, pd.DataFrame],
         predictions_df: pd.DataFrame,
         version: str = ""
     ) -> List[go.Scatter]:
-        data = [go.Scatter(
-            x=time_points, y=true_vals, name="True values" + version)]
+        true_vals = self._split_ts_where_breaks(true_vals)
+        true_vals = self._concat_dfs_with_gaps(true_vals)
+
+        data = self._preds_to_plotly_data(true_vals, "true_values", version)
         for _, row in predictions_df.iterrows():
             model_name = self.models_params.iloc[row["model_id"]].name_
-            data += [go.Scatter(x=time_points, y=row["predictions"],
-                                name=model_name + version)]
+            preds = self._split_ts_where_breaks(row["predictions"])
+            preds = self._concat_dfs_with_gaps(preds)
+            data += self._preds_to_plotly_data(preds, model_name, version)
         return data
 
     def plot_preprocessed_dataset(
@@ -598,16 +646,14 @@ class Experimentator:
         """
         predictions_df = self._get_models_predictions(dataset_idx, models_ids)
         ds_params = self.datasets_params.iloc[dataset_idx]
-        time_points = ds_params.true_values.index.tolist()
-        true_vals = ds_params.true_values.tolist()
         target = ds_params.target
 
         if rescale:
             self._rescale_true_vals_and_preds(
-                dataset_idx, true_vals, predictions_df, target)
+                dataset_idx, ds_params.true_values, predictions_df, target)
 
         data = self._true_vals_and_preds_to_plotly_data(
-            time_points, true_vals, predictions_df)
+            ds_params.true_values, predictions_df)
 
         layout = go.Layout(
             title=ds_params.name_,
@@ -621,29 +667,52 @@ class Experimentator:
         else:
             fig.show()
 
+    def _get_target_columns_ids(
+        self,
+        target_name: Union[str, List[str]],
+        scaler: TransformerMixin
+    ) -> List[int]:
+        result = []
+        if isinstance(target_name, str):
+            idx = np.where(scaler.feature_names_in_ == target_name)[0][0]
+            result = [idx]
+        elif isinstance(target_name, list):
+            for t in target_name:
+                idx = np.where(scaler.feature_names_in_ == t)[0][0]
+                result += [idx]
+        return result
+
     def _scale_inverse(
         self,
-        time_series: Union[List[float], pd.DataFrame],
+        time_series: Union[pd.Series, pd.DataFrame],
         scaler_dataset_idx: int,
-        target_name: str = None
+        target_name: Union[str, List[str]] = None
     ) -> List[float]:
         scaler = self.get_target_scaler(scaler_dataset_idx)
 
         result = None
-        if target_name is not None and isinstance(time_series, list):
-            target_col_idx = np.where(
-                scaler.feature_names_in_ == target_name)[0][0]
-            # if scaler was trained on multifeatures data,
-            # we have to fill data with artificial columns
-            # f.e. duplicating target column
-            duplicated_time_series = np.array([
-                [val]*scaler.n_features_in_
-                for val in time_series
-            ])
-            result = scaler.inverse_transform(duplicated_time_series)
-            result = result.T[target_col_idx]
-        else:
-            result = scaler.inverse_transform(time_series)
+        if target_name is not None and isinstance(time_series, pd.Series):
+            cols_ids = self._get_target_columns_ids(target_name, scaler)
+            scaler_input = np.array(
+                [time_series.tolist()] * scaler.n_features_in_).T
+            result = scaler.inverse_transform(scaler_input)
+            result = result.T[cols_ids]
+        elif target_name is not None and isinstance(time_series, pd.DataFrame):
+            cols_ids = self._get_target_columns_ids(target_name, scaler)
+            mocked_column = [0] * time_series.shape[0]
+            scaler_input = []
+
+            for scaler_feature in scaler.feature_names_in_:
+                if scaler_feature in time_series.columns:
+                    scaler_input += [time_series[scaler_feature].tolist()]
+                else:
+                    scaler_input += [mocked_column]
+            scaler_input = np.array(scaler_input).T
+
+            result = scaler.inverse_transform(scaler_input)
+            result = result.T[cols_ids]
+        elif target_name is None and isinstance(time_series, pd.DataFrame):
+            result = scaler.inverse_transform(time_series).T
 
         return result
 
@@ -849,17 +918,15 @@ def plot_aggregated_predictions(
             predictions_df = exp._get_models_predictions(
                 dataset_idx, models_ids)
             ds_params = exp.datasets_params.iloc[dataset_idx]
-            time_points = ds_params.true_values.index.tolist()
-            true_vals = ds_params.true_values.tolist()
             target = ds_params.target
 
             if rescale:
                 exp._rescale_true_vals_and_preds(
-                    dataset_idx, true_vals, predictions_df, target)
+                    dataset_idx, ds_params.true_values, predictions_df, target)
 
             data += exp._true_vals_and_preds_to_plotly_data(
-                time_points, true_vals, predictions_df,
-                model_version=f", exp: {exp.exp_date}, ds: {dataset_idx}")
+                ds_params.true_values, predictions_df,
+                version=f", exp: {exp.exp_date}, ds: {dataset_idx}")
 
     layout = go.Layout(
         title=ds_params.name_,
