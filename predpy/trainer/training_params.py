@@ -69,7 +69,7 @@ class EarlyStoppingParams:
 
 @dataclass
 class LoggerParams:
-    save_dir: str
+    save_dir: str = "./"
     name: str = 'default'
     version: str = None
 

@@ -44,17 +44,17 @@ class Predictor(LightningModule):
         self.lr = lr
 
     def forward(self, x, labels=None):
-        output = self.model(x)
-        loss = 0
-        if labels is not None:
-            loss = self.criterion(output, labels.unsqueeze(dim=1))
-        return loss, output
+        return self.model(x)
+        # return loss, output
+
+    def get_loss(self, output, labels):
+        return self.criterion(output, labels.unsqueeze(dim=1))
 
     def training_step(self, batch, batch_idx):
         sequences = batch["sequence"]
         labels = batch["label"]
 
-        loss, _ = self(sequences, labels)
+        loss = self.get_loss(self(sequences), labels)
         self.log("train_loss", loss, prog_bar=True, logger=True)
         return loss
 
@@ -62,7 +62,7 @@ class Predictor(LightningModule):
         sequences = batch["sequence"]
         labels = batch["label"]
 
-        loss, _ = self(sequences, labels)
+        loss = self.get_loss(self(sequences), labels)
         self.log("val_loss", loss, prog_bar=True, logger=True)
         return loss
 
@@ -70,7 +70,7 @@ class Predictor(LightningModule):
         sequences = batch["sequence"]
         labels = batch["label"]
 
-        loss, _ = self(sequences, labels)
+        loss = self.get_loss(self(sequences), labels)
         self.log("test_loss", loss, prog_bar=True, logger=True)
         return loss
 
@@ -80,8 +80,7 @@ class Predictor(LightningModule):
 
     def predict(self, sequence):
         with torch.no_grad():
-            _, output = self(sequence)
-            return output.tolist()
+            return self(sequence).tolist()
 
     def get_dataset_predictions(
         self,

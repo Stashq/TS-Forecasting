@@ -14,6 +14,8 @@ to reconstruct.
 """
 from __future__ import annotations
 import pytorch_lightning as pl
+from pytorch_lightning.loggers.base import LightningLoggerBase
+from pytorch_lightning.loggers import TensorBoardLogger
 from typing import List, Dict, Type, Tuple, Union
 import time
 import pathlib
@@ -26,6 +28,9 @@ from string import Template
 import numpy as np
 from dataclasses import dataclass, field
 from datetime import timedelta, datetime
+import os
+from dataclasses import asdict
+import torch
 
 from predpy.wrapper import Predictor
 from predpy.data_module import MultiTimeSeriesModule
@@ -69,9 +74,23 @@ class Experimentator:
         datasets_params: List[DatasetParams],
         learning_params: LearningParams = LearningParams(),
         WrapperCls: Type[pl.LightningDataModule] = Predictor,
-        wrapper_kwargs: Dict = {}
+        wrapper_kwargs: Dict = {},
+        trainer_params: TrainerParams = TrainerParams(),
+        checkpoint_params: CheckpointParams = CheckpointParams(),
+        early_stopping_params: EarlyStoppingParams = EarlyStoppingParams()
     ):
         """
+
+        Parameters
+        ----------
+        trainer_params : TrainerParams
+            
+        checkpoint_params : CheckpointParams
+            
+        early_stopping_params : EarlyStoppingParams
+            
+            """
+        """Creates experimentator instance and sets experiments parameters.
 
         Parameters
         ----------
@@ -85,6 +104,15 @@ class Experimentator:
             Lightning class wrapping pytorch model. By default Predictor.
         wrapper_kwargs : Dict, optional
             Additional wrapper named arguments. By default {}.
+        trainer_params : TrainerParams, optional
+            Lightning trainer parameters (can contain logger and additional
+            callbacks), by default TrainerParams().
+        checkpoint_params : CheckpointParams, optional
+            Lightning *ModelCheckpoint* init arguments,
+            by default CheckpointParams().
+        early_stopping_params : EarlyStoppingParams, optional
+            Lightning *EarlyStopping* init arguments,
+            by default EarlyStoppingParams().
         """
         self.set_experiment_params(models_params, datasets_params)
 
@@ -92,6 +120,11 @@ class Experimentator:
         self.WrapperCls = WrapperCls
         self.learning_params = learning_params
         self.wrapper_kwargs = wrapper_kwargs
+
+        # Training process variables
+        self.trainer_params = trainer_params
+        self.checkpoint_params = checkpoint_params
+        self.early_stopping_params = early_stopping_params
 
         # Experiment variables init
         self.predictions = None
@@ -121,7 +154,7 @@ class Experimentator:
             axis=1
         )
 
-    def get_preprocessed_data(
+    def load_time_series_module(
         self,
         dataset_idx: int,
     ) -> MultiTimeSeriesModule:
@@ -203,39 +236,108 @@ class Experimentator:
             multi_time_series))
         return result
 
+    def create_lightning_module(
+        self,
+        model: torch.nn.Module = None,
+        learning_params: Dict = {},
+        model_idx: int = None
+    ) -> pl.LightningModule:
+        if model is None and model_idx is not None:
+            m_params = self.models_params.iloc[model_idx]
+            model = m_params.cls_(**m_params.init_params)
+        elif model is None and model_idx is None:
+            raise ValueError("No module passed to LightningModule.")
+        pl_model = self.WrapperCls(
+            model=model, **asdict(learning_params),
+            **self.wrapper_kwargs)
+        return pl_model
+
+    def load_pl_model(
+        self,
+        model_idx: int,
+        dir_path: str,
+        file_name: str = None,
+        find_last: bool = True
+    ):
+        pl_model = self.create_lightning_module(
+            model_idx=model_idx, learning_params=self.learning_params)
+
+        if file_name is None:
+            file_name = self.exp_date
+        if dir_path is None:
+            dir_path = self.datasets_params["path"]
+        if find_last:
+            file_name = self._find_last_model(dir_path, file_name)
+        pl_model.load_state_dict(
+            torch.load(
+                os.path.join(dir_path, file_name + ".ckpt")
+            )["state_dict"])
+        return pl_model
+
+    def _find_last_model(
+        self,
+        dir_path: str,
+        file_name: str
+    ):
+        files = [
+            file[:-5]
+            for file in os.listdir(dir_path)
+            if file[:len(file_name)] == file_name and file[-5:] == ".ckpt"]
+        i = 1
+        found = False
+        last_model_file = file_name
+
+        while found is False:
+            next_model_file = file_name + f"-v{i}"
+            if next_model_file in files:
+                last_model_file = next_model_file
+                i += 1
+            else:
+                found = True
+
+        return last_model_file
+
     def _experiment_step(
         self,
-        trainer_params: TrainerParams,
-        checkpoint_params: CheckpointParams,
-        early_stopping_params: EarlyStoppingParams,
-        logger_params: LoggerParams,
-        chp_path: str,
         tsm: MultiTimeSeriesModule,
-        predictions: pd.DataFrame,
-        ds_idx: int,
-        m_idx: int
+        model_idx: int
     ):
         pl.seed_everything(42)
 
-        m_params = self.models_params.iloc[m_idx]
+        m_params = self.models_params.iloc[model_idx]
+        chp_dirpath = self.checkpoint_params.dirpath
+
+        checkpoint_params = CheckpointParams(**asdict(self.checkpoint_params))
+        trainer_params = TrainerParams(**asdict(self.trainer_params))
+        early_stopping_params = EarlyStoppingParams(
+            **asdict(self.early_stopping_params))
 
         # setting files paths and logger with model name
-        logger_params.name = m_params.name_
+        trainer_params.logger["name"] = m_params.name_
         checkpoint_params.dirpath =\
-            f"{chp_path}/{tsm.name_}/{m_params.name_}"
+            os.path.join(chp_dirpath, tsm.name_, m_params.name_)
+
+        pl_model = self.WrapperCls(
+            model=m_params.cls_(**m_params.init_params),
+            **asdict(self.learning_params),
+            **self.wrapper_kwargs)
 
         # training model
         pl_model = get_trained_pl_model(
-            model=m_params.cls_(**m_params.init_params),
-            data_module=tsm, trainer_params=trainer_params,
-            logger_params=logger_params,
+            pl_model=pl_model,
+            data_module=tsm,
+            trainer_params=trainer_params,
             checkpoint_params=checkpoint_params,
-            early_stopping_params=early_stopping_params,
-            learning_params=self.learning_params,
-            WrapperCls=self.WrapperCls,
-            wrapper_kwargs=self.wrapper_kwargs)
+            early_stopping_params=early_stopping_params)
 
-        # collecting model prediction on test dataset
+        # load last saved model
+        pl_model = self.load_pl_model(
+            model_idx,
+            checkpoint_params.filename,
+            checkpoint_params.dirpath,
+            find_last=True)
+
+        # collect predictions made on test dataset
         preds = pl_model.get_dataset_predictions(tsm.test_dataloader())
         labels = tsm.test_dataloader().dataset.get_labels()
 
@@ -244,16 +346,11 @@ class Experimentator:
         else:
             columns = [labels.name]
 
-        df = pd.DataFrame(
+        return pd.DataFrame(
             data=preds, columns=columns, index=labels.index
         )
 
-        predictions.append(
-            PredictionRecord(
-                dataset_id=ds_idx, model_id=m_idx, predictions=df
-            ))
-
-    def _deliver_exception(self, msg, exception, safe):
+    def _deliver_exception(self, msg: str, exception: Exception, safe: bool):
         if safe:
             print("\n\n==== Warning ====")
             print(msg)
@@ -263,23 +360,35 @@ class Experimentator:
             exception.args += (msg,)
             raise exception
 
-    def _data_setup(self, ds_idx: int):
+    def _set_err_msg(
+        self,
+        dataset_idx: int,
+        model_idx: int = None
+    ) -> str:
+        msg = None
+        ds_name = self.datasets_params.iloc[dataset_idx]["name_"]
+        if model_idx is None:
+            msg = dataset_setup_exception_msg.substitute(
+                dataset_idx=dataset_idx, dataset_name=ds_name)
+        else:
+            m_name = self.models_params.iloc[dataset_idx]["name_"]
+            msg = training_exception_msg.substitute(
+                model_idx=model_idx, model_name=m_name,
+                dataset_idx=dataset_idx, dataset_name=ds_name)
+        return msg
 
+    def _data_setup(self, dataset_idx: int):
         # data loading and transforming
-        tsm = self.get_preprocessed_data(ds_idx)
+        tsm = self.load_time_series_module(dataset_idx)
 
         # saving true values
-        self.datasets_params["true_values"].iat[ds_idx] =\
+        self.datasets_params["true_values"].iat[dataset_idx] =\
             tsm.test_dataloader().dataset.get_labels()
         return tsm
 
     def run_experiments(
         self,
-        logs_path: str,
-        trainer_params: TrainerParams,
-        checkpoint_params: CheckpointParams,
-        early_stopping_params: EarlyStoppingParams,
-        skip_points: List[Tuple[int, int]] = [],
+        skip_steps: List[Tuple[int, int]] = [],
         experiments_path: str = None,
         safe: bool = True
     ) -> Experimentator:
@@ -288,20 +397,11 @@ class Experimentator:
         For every possible pair of provided dataset configuration and model
         setup run step of experiment where: model is trained, validated and
         predictions on test dataset are collected.
-        Only steps included in *skip_points* will be omitted.
+        Only steps included in *skip_steps* will be omitted.
 
         Parameters
         ----------
-        logs_path : str
-            Path where logs will be saved.
-        trainer_params : TrainerParams
-            Lightning trainer parameters (can contain logger and additional
-            callbacks).
-        checkpoint_params : CheckpointParams
-            Lightning *ModelCheckpoint* init arguments.
-        early_stopping_params : EarlyStoppingParams
-            Lightning *EarlyStopping* init arguments.
-        skip_points : List[Tuple[int, int]], optional
+        skip_steps : List[Tuple[int, int]], optional
             Experiment steps to be skipped. Single element should be tuple
             where first argument is dataset id and second is model id.
             By default [].
@@ -318,58 +418,49 @@ class Experimentator:
         """
         # setting experiment date
         self.exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
-        checkpoint_params.filename = self.exp_date
+        self.checkpoint_params.filename = self.exp_date
 
         # init variables
-        logger_params = LoggerParams(logs_path, None, self.exp_date)
-        chp_path = checkpoint_params.dirpath
         predictions = []
 
         # run experiment
-        for ds_idx in self.datasets_params.index:
+        for dataset_idx in self.datasets_params.index:
 
             # data setup and true values saving
             try:
-                tsm = self._data_setup(ds_idx)
+                tsm = self._data_setup(dataset_idx)
             except Exception as e:
-                ds_name = self.datasets_params.iloc[ds_idx]["name_"]
                 self._deliver_exception(
-                    msg=dataset_setup_exception_msg.substitute(
-                        dataset_idx=ds_idx, dataset_name=ds_name),
-                    exception=e, safe=safe
-                )
+                    msg=self._set_err_msg(dataset_idx), exception=e, safe=safe)
                 continue
 
-            for m_idx in self.models_params.index:
-
-                if (ds_idx, m_idx) in skip_points:
+            for model_idx in self.models_params.index:
+                if (dataset_idx, model_idx) in skip_steps:
                     # skipping experiment step
                     continue
 
                 try:
-                    self._experiment_step(
-                        trainer_params, checkpoint_params,
-                        early_stopping_params, logger_params, chp_path,
-                        tsm, predictions, ds_idx, m_idx)
+                    model_preds_df = self._experiment_step(tsm, model_idx)
+                    predictions.append(
+                        PredictionRecord(
+                            dataset_id=dataset_idx,
+                            model_id=model_idx,
+                            predictions=model_preds_df
+                        ))
                 except Exception as e:
-                    ds_name = self.datasets_params.iloc[ds_idx]["name_"]
-                    m_name = self.models_params.iloc[ds_idx]["name_"]
                     self._deliver_exception(
-                        msg=training_exception_msg.substitute(
-                            model_idx=m_idx, model_name=m_name,
-                            dataset_idx=ds_idx, dataset_name=ds_name),
-                        exception=e, safe=safe
+                        msg=self._set_err_msg(dataset_idx, model_idx),
+                        exception=e,
+                        safe=safe,
                     )
                     continue
 
-        # saving experiments outputs in experimentator instance
+        # saving store predictions as dataframe
         self.predictions = pd.DataFrame(predictions)
 
         # saving experiments run to file
         if len(predictions) == 0:
-            print("\n\n==== Warning ====")
-            print("No predictions were made")
-            print("\n\n")
+            print("\n\n==== Warning ====\nNo predictions were made\n\n")
         elif experiments_path is not None:
             self.save(experiments_path, safe=True)
 
@@ -508,7 +599,7 @@ class Experimentator:
         start: int = None,
         end: int = None
     ):
-        tsm = self.get_preprocessed_data(dataset_idx)
+        tsm = self.load_time_series_module(dataset_idx)
 
         ts_with_gaps = []
         train_end = tsm.train_range[1]
@@ -759,7 +850,7 @@ class Experimentator:
         checkpoint_params.filename = exp_date
 
         m_params = self.models_params.iloc[model_idx]
-        tsm = self.get_preprocessed_data(dataset_idx)
+        tsm = self.load_time_series_module(dataset_idx)
         logger_params = LoggerParams(logs_path, m_params.name_, exp_date)
 
         return get_trained_pl_model(
@@ -822,14 +913,19 @@ class Experimentator:
                     {
                         "models_params": self.models_params,
                         "datasets_params": self.datasets_params,
+                        "logs_path": self.logs_path,
                         "learning_params": self.learning_params,
                         "WrapperCls": self.WrapperCls,
                         "wrapper_kwargs": self.wrapper_kwargs,
+                        "trainer_params": self.trainer_params,
+                        "checkpoint_params": self.checkpoint_params,
+                        "early_stopping_params": self.early_stopping_params,
                         "predictions": self.predictions,
                         "exp_date": self.exp_date
                     },
                     file
                 )
+
         except FileNotFoundError as file_not_found_error:
             if safe:
                 print(f"{path} not found.")
@@ -856,9 +952,13 @@ def load_experimentator(path: str) -> Experimentator:
         exp = Experimentator(
             models_params=attrs["models_params"],
             datasets_params=attrs["datasets_params"],
+            logs_path=attrs["logs_path"],
             learning_params=attrs["learning_params"],
             WrapperCls=attrs["WrapperCls"],
-            wrapper_kwargs=attrs["wrapper_kwargs"]
+            wrapper_kwargs=attrs["wrapper_kwargs"],
+            trainer_params=attrs["trainer_params"],
+            checkpoint_params=attrs["checkpoint_params"],
+            early_stopping_params=attrs["early_stopping_params"],
         )
         exp.predictions = attrs["predictions"]
         exp.exp_date = attrs["exp_date"]
