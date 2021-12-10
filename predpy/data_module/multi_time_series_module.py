@@ -6,7 +6,7 @@ Split data between training, validation, test datasets and stores them using
 *TimeSeriesDataset* classes.
 """
 import math
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Callable
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from predpy.dataset import MultiTimeSeriesDataset, TimeSeriesDataset
@@ -84,7 +84,7 @@ class MultiTimeSeriesModule(LightningDataModule):
 
         self._save_proportions_as_ids(split_proportions, overlapping)
 
-        self._ending_seqs_ids = self._get_ending_sequences_ids(
+        self._ending_seqs_rec_ids = self._get_ending_sequences_rec_ids(
             sequences, window_size)
 
         self.train_dataset = None
@@ -125,7 +125,7 @@ class MultiTimeSeriesModule(LightningDataModule):
                 n_splits=n_splits, min_n_records=min_n_records))
         return n_records, n_overlapping_records
 
-    def _get_ending_sequences_ids(
+    def _get_ending_sequences_rec_ids(
         self,
         sequences: List[pd.DataFrame],
         window_size: int
@@ -145,12 +145,12 @@ class MultiTimeSeriesModule(LightningDataModule):
             List of starting records indices.
         """
         first_idx = 0
-        ending_ids = []
+        ending_rec_ids = []
         for seq in sequences:
             n_records = seq.shape[0] - window_size
-            ending_ids += [first_idx + n_records - 1]
+            ending_rec_ids += [first_idx + n_records - 1]
             first_idx += n_records
-        return ending_ids
+        return ending_rec_ids
 
     def _drop_too_short_seqs(
         self,
@@ -262,7 +262,7 @@ class MultiTimeSeriesModule(LightningDataModule):
                 self.val_range = (val_test_start, val_test_end - 1)
                 self.test_range = (val_test_start, val_test_end - 1)
 
-    def _get_seqs_id_by_global_id(self, idx: int) -> int:
+    def _get_seqs_id_by_global_rec_id(self, idx: int) -> int:
         """Returns a sequence index containing record with provided global
         index.
 
@@ -276,17 +276,17 @@ class MultiTimeSeriesModule(LightningDataModule):
         int
             Sequence index containing record with provided global index.
         """
-        if idx > self._ending_seqs_ids[-1] or idx < 0:
+        if idx > self._ending_seqs_rec_ids[-1] or idx < 0:
             raise IndexError("Index out of range.")
 
         seqs_id = None
-        for i, end_id in enumerate(self._ending_seqs_ids):
+        for i, end_id in enumerate(self._ending_seqs_rec_ids):
             if idx <= end_id:
                 seqs_id = i
                 break
         return seqs_id
 
-    def _global_id_to_seq_rec_id(self, idx: int) -> Tuple[int, int]:
+    def _global_rec_id_to_seq_rec_id(self, idx: int) -> Tuple[int, int]:
         """Transform global record index to sequence index and record index in
         that sequence.
 
@@ -300,16 +300,16 @@ class MultiTimeSeriesModule(LightningDataModule):
         Tuple[int, int]
             Sequence index and record relative index.
         """
-        seq_id = self._get_seqs_id_by_global_id(idx)
+        seq_id = self._get_seqs_id_by_global_rec_id(idx)
         rec_id_in_seq = None
         if seq_id == 0:
             rec_id_in_seq = idx
         else:
-            first_rec_id = self._ending_seqs_ids[seq_id - 1] + 1
+            first_rec_id = self._ending_seqs_rec_ids[seq_id - 1] + 1
             rec_id_in_seq = idx - first_rec_id
         return seq_id, rec_id_in_seq
 
-    def _get_with_records_range(
+    def get_recs_range(
         self,
         start: int,
         end: int
@@ -330,23 +330,23 @@ class MultiTimeSeriesModule(LightningDataModule):
             Sequences cut as they would already contain a records from provided
             range.
         """
-        starting_seqs_id = self._get_seqs_id_by_global_id(start)
-        ending_seqs_id = self._get_seqs_id_by_global_id(end)
+        starting_seqs_id = self._get_seqs_id_by_global_rec_id(start)
+        ending_seqs_id = self._get_seqs_id_by_global_rec_id(end)
         record_len = self.window_size + 1
 
         result = None
         # if sequences ids are the same
         if starting_seqs_id == ending_seqs_id:
             # return data only from it including ranges
-            _, start = self._global_id_to_seq_rec_id(start)
-            _, end = self._global_id_to_seq_rec_id(end)
+            _, start = self._global_rec_id_to_seq_rec_id(start)
+            _, end = self._global_rec_id_to_seq_rec_id(end)
             result = [
                 self.sequences[starting_seqs_id].iloc[start:end+record_len]]
         # if sequences ids are different
         else:
             # collect data from starting sequence
-            _, start = self._global_id_to_seq_rec_id(start)
-            _, end = self._global_id_to_seq_rec_id(end)
+            _, start = self._global_rec_id_to_seq_rec_id(start)
+            _, end = self._global_rec_id_to_seq_rec_id(end)
             result = [self.sequences[starting_seqs_id].iloc[start:]]
             # append all sequences between starting and ending
             result += [
@@ -360,15 +360,15 @@ class MultiTimeSeriesModule(LightningDataModule):
 
     def setup(self, stage: str = None):
         start, end = self.train_range
-        seqs = self._get_with_records_range(start, end)
+        seqs = self.get_recs_range(start, end)
         self.train_dataset = self.DatasetCls(
             seqs, self.window_size, self.target)
         start, end = self.val_range
-        seqs = self._get_with_records_range(start, end)
+        seqs = self.get_recs_range(start, end)
         self.val_dataset = self.DatasetCls(
             seqs, self.window_size, self.target)
         start, end = self.test_range
-        seqs = self._get_with_records_range(start, end)
+        seqs = self.get_recs_range(start, end)
         self.test_dataset = self.DatasetCls(
             seqs, self.window_size, self.target)
 
@@ -395,3 +395,73 @@ class MultiTimeSeriesModule(LightningDataModule):
             shuffle=False,
             num_workers=4
         )
+
+    def _global_data_id_to_seq_data_id(
+        self,
+        idx: int
+    ) -> Tuple[int, int]:
+        start = 0
+        for i, seqs in enumerate(self.sequences):
+            end = start + seqs.shape[0]
+            if idx < end:
+                time_series_idx = i
+                local_idx = idx - start
+                return time_series_idx, local_idx
+        return None, None
+
+    def _global_data_ranges_to_seq_data_ids(
+        self,
+        start: int = None,
+        end: int = None
+    ):
+        if start > end:
+            raise ValueError("Start index cannot be greater than end index.")
+        max_end = sum([seqs.shape[0] for seqs in self.sequences]) - 1
+
+        start_ts, start_local_idx = None, None
+        end_ts, end_local_idx = None, None
+        if start is None or start < 0:
+            start_ts, start_local_idx = (0, 0)
+        elif start > max_end:
+            raise ValueError(
+                f"Start index cannot be greater than max index {max_end}.")
+        else:
+            start_ts, start_local_idx =\
+                self._global_data_id_to_seq_data_id(start)
+
+        if end is None or end > max_end:
+            end_ts, end_local_idx =\
+                self._global_data_id_to_seq_data_id(max_end)
+            end_local_idx += 1
+        elif end < 0:
+            raise ValueError("End index cannot be less than 0.")
+        else:
+            end_ts, end_local_idx = self._global_data_id_to_seq_data_id(end)
+
+        return (start_ts, start_local_idx, end_ts, end_local_idx)
+
+    def get_data_from_range(
+        self,
+        start: int = None,
+        end: int = None,
+        copy: bool = True
+    ) -> List[pd.DataFrame]:
+        start_ts, start_local_idx, end_ts, end_local_idx =\
+            self._global_data_ranges_to_seq_data_ids(start, end)
+
+        result = []
+        if start_ts < end_ts:
+            result += [self.sequences[start_ts].iloc[start_local_idx:]]
+            for ts_idx in range(start_ts + 1, end_ts):
+                result += [self.sequences[ts_idx]]
+            result += [self.sequences[end_ts].iloc[:end_local_idx]]
+        elif start_ts == end_ts:
+            result += [
+                self.sequences[start_ts].iloc[start_local_idx:end_local_idx]]
+        else:
+            raise ValueError("Starting time series index is \
+                greater than ending time series.")
+
+        if copy:
+            result = [seqs.copy() for seqs in result]
+        return result

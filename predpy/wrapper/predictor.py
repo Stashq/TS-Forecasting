@@ -48,7 +48,8 @@ class Predictor(LightningModule):
         # return loss, output
 
     def get_loss(self, output, labels):
-        return self.criterion(output, labels.unsqueeze(dim=1))
+        # return self.criterion(output, labels.unsqueeze(dim=1))
+        return self.criterion(output, labels)
 
     def training_step(self, batch, batch_idx):
         sequences = batch["sequence"]
