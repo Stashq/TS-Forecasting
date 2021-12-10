@@ -44,6 +44,8 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         sequences = self._drop_too_short_seqs(sequences, window_size)
 
         self.window_size = window_size
+        if not isinstance(target, list):
+            target = [target]
         self.target = target
         self.sequences = sequences
 
@@ -265,7 +267,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         self,
         start_idx: int = None,
         end_idx: int = None
-    ) -> Union[pd.Series, pd.DataFrame]:
+    ) -> pd.DataFrame:
         """Returns dataset labels from provided range.\n
 
         If start_idx is None, range will start from 0,
@@ -291,3 +293,13 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         labels = pd.concat([
             seq[self.target].iloc[self.window_size:] for seq in seqs])
         return labels
+
+    def copy(self):
+        return MultiTimeSeriesDataset(
+            sequences=[
+                seqs.copy(deep=True)
+                for seqs in self.sequences
+            ],
+            window_size=self.window_size,
+            target=self.target[:]
+        )

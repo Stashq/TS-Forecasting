@@ -12,7 +12,7 @@ import torch
 import pandas as pd
 from predpy.preprocessing import seq_to_records
 from .time_series_dataset import TimeSeriesDataset
-from typing import Dict
+from typing import Dict, Union, List
 
 
 class TimeSeriesRecordsDataset(TimeSeriesDataset):
@@ -31,7 +31,7 @@ class TimeSeriesRecordsDataset(TimeSeriesDataset):
         self,
         sequence: pd.DataFrame,
         window_size: int,
-        target: str
+        target: Union[List[str], str]
     ):
         """Creates *TimeSeriesRecordsDataset* instance.\n
 
@@ -50,6 +50,8 @@ class TimeSeriesRecordsDataset(TimeSeriesDataset):
         """
         self.records = seq_to_records(sequence, window_size, target)
         self.window_size = window_size
+        if not isinstance(target, list):
+            target = [target]
         self.target = target
 
     def __len__(self):
@@ -73,14 +75,14 @@ class TimeSeriesRecordsDataset(TimeSeriesDataset):
         seq, label = self.records[idx]
         return dict(
             sequence=torch.tensor(seq.to_numpy().T).float(),
-            label=torch.tensor(label).float()
+            label=torch.tensor(label.to_numpy()).float()
         )
 
     def get_labels(
         self,
         start_idx: int = None,
         end_idx: int = None
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         """Returns dataset labels from provided range.\n
 
         If start_idx is None, range will start from 0,
@@ -103,4 +105,4 @@ class TimeSeriesRecordsDataset(TimeSeriesDataset):
         if end_idx is None:
             end_idx = self.__len__()
         labels = [rec[1] for rec in self.records[start_idx:end_idx]]
-        return pd.Series(labels)
+        return pd.DataFrame(labels)

@@ -68,6 +68,8 @@ class MultiTimeSeriesModule(LightningDataModule):
         self.split_proportions = split_proportions
         self.sequences = sequences
         self.name_ = dataset_name
+        if not isinstance(target, list):
+            target = [target]
         self.target = target
         self.window_size = window_size
         self.batch_size = batch_size
@@ -88,6 +90,21 @@ class MultiTimeSeriesModule(LightningDataModule):
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
+
+    def copy(self):
+        return MultiTimeSeriesModule(
+            sequences=[
+                seqs.copy(deep=True)
+                for seqs in self.sequences
+            ],
+            dataset_name=self.name_,
+            target=self.target[:],
+            split_proportions=self.split_proportions[:],
+            window_size=self.window_size,
+            batch_size=self.batch_size,
+            DatasetCls=self.DatasetCls,
+            overlapping=self.overlapping
+        )
 
     def _get_records_number(
         self,

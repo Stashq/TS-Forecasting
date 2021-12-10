@@ -6,7 +6,7 @@ usage. Created object is much lighter than *TimeSeriesRecodsDataset* object.
 import torch
 import pandas as pd
 from .time_series_dataset import TimeSeriesDataset
-from typing import Dict
+from typing import Union, List, Dict
 
 
 class SingleTimeSeriesDataset(TimeSeriesDataset):
@@ -24,7 +24,12 @@ class SingleTimeSeriesDataset(TimeSeriesDataset):
     BaseTimeSeriesDataset : [type]
         Abstract class for time series datasets classes.
     """
-    def __init__(self, sequence: pd.DataFrame, window_size: int, target: str):
+    def __init__(
+        self,
+        sequence: pd.DataFrame,
+        window_size: int,
+        target: Union[List[str], str]
+    ):
         """Creates *SingleTimeSeriesDataset* instance.
 
         Parameters
@@ -38,6 +43,8 @@ class SingleTimeSeriesDataset(TimeSeriesDataset):
         """
         self.sequence = sequence
         self.window_size = window_size
+        if not isinstance(target, list):
+            target = [target]
         self.target = target
 
     def __len__(self) -> int:
@@ -72,14 +79,14 @@ class SingleTimeSeriesDataset(TimeSeriesDataset):
         label = self.sequence.iloc[idx + self.window_size][self.target]
         return dict(
             sequence=torch.tensor(seq.to_numpy().T).float(),
-            label=torch.tensor(label).float()
+            label=torch.tensor(label.to_numpy()).float()
         )
 
     def get_labels(
         self,
         start_idx: int = None,
         end_idx: int = None
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
         """Returns dataset labels from provided range.\n
 
         If start_idx is None, range will start from 0,

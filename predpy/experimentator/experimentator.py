@@ -46,7 +46,7 @@ from .experimentator_params import (
 dataset_setup_exception_msg = Template(
     "Error during setup $dataset_idx dataset named $dataset_name.")
 training_exception_msg = Template(
-    "Problem with training $model_idx model named $model_name on"
+    "Problem with training $model_idx model named $model_name on "
     "$dataset_idx dataset named $dataset_name")
 
 
@@ -77,19 +77,10 @@ class Experimentator:
         wrapper_kwargs: Dict = {},
         trainer_params: TrainerParams = TrainerParams(),
         checkpoint_params: CheckpointParams = CheckpointParams(),
-        early_stopping_params: EarlyStoppingParams = EarlyStoppingParams()
+        early_stopping_params: EarlyStoppingParams = EarlyStoppingParams(),
+        loggers_params: List[LoggerParams] = [LoggerParams()],
+        LoggersClasses: List[Type[LightningLoggerBase]] = [TensorBoardLogger]
     ):
-        """
-
-        Parameters
-        ----------
-        trainer_params : TrainerParams
-            
-        checkpoint_params : CheckpointParams
-            
-        early_stopping_params : EarlyStoppingParams
-            
-            """
         """Creates experimentator instance and sets experiments parameters.
 
         Parameters
@@ -121,10 +112,12 @@ class Experimentator:
         self.learning_params = learning_params
         self.wrapper_kwargs = wrapper_kwargs
 
-        # Training process variables
+        # Trainer params
         self.trainer_params = trainer_params
         self.checkpoint_params = checkpoint_params
         self.early_stopping_params = early_stopping_params
+        self.loggers_params = loggers_params
+        self.LoggersClasses = LoggersClasses
 
         # Experiment variables init
         self.predictions = None
@@ -157,6 +150,7 @@ class Experimentator:
     def load_time_series_module(
         self,
         dataset_idx: int,
+        setup: bool = True
     ) -> MultiTimeSeriesModule:
         """Create time series module.
 
@@ -192,7 +186,8 @@ class Experimentator:
             batch_size=int(ds_params.batch_size),
             DatasetCls=ds_params.DatasetCls
         )
-        tsm.setup()
+        if setup:
+            tsm.setup()
         return tsm
 
     def _split_ts_where_breaks(
@@ -238,15 +233,12 @@ class Experimentator:
 
     def create_lightning_module(
         self,
-        model: torch.nn.Module = None,
-        learning_params: Dict = {},
-        model_idx: int = None
+        model: Union[torch.nn.Module, int] = None,
+        learning_params: Dict = {}
     ) -> pl.LightningModule:
-        if model is None and model_idx is not None:
-            m_params = self.models_params.iloc[model_idx]
+        if isinstance(model, int):
+            m_params = self.models_params.iloc[model]
             model = m_params.cls_(**m_params.init_params)
-        elif model is None and model_idx is None:
-            raise ValueError("No module passed to LightningModule.")
         pl_model = self.WrapperCls(
             model=model, **asdict(learning_params),
             **self.wrapper_kwargs)
@@ -260,7 +252,7 @@ class Experimentator:
         find_last: bool = True
     ):
         pl_model = self.create_lightning_module(
-            model_idx=model_idx, learning_params=self.learning_params)
+            model=model_idx, learning_params=self.learning_params)
 
         if file_name is None:
             file_name = self.exp_date
@@ -311,9 +303,14 @@ class Experimentator:
         trainer_params = TrainerParams(**asdict(self.trainer_params))
         early_stopping_params = EarlyStoppingParams(
             **asdict(self.early_stopping_params))
+        loggers_params = [
+            LoggerParams(**asdict(params))
+            for params in self.loggers_params]
 
         # setting files paths and logger with model name
-        trainer_params.logger["name"] = m_params.name_
+        for log in loggers_params:
+            log.name = m_params.name_
+            log.version = self.exp_date
         checkpoint_params.dirpath =\
             os.path.join(chp_dirpath, tsm.name_, m_params.name_)
 
@@ -328,13 +325,15 @@ class Experimentator:
             data_module=tsm,
             trainer_params=trainer_params,
             checkpoint_params=checkpoint_params,
-            early_stopping_params=early_stopping_params)
+            early_stopping_params=early_stopping_params,
+            loggers_params=loggers_params,
+            LoggersClasses=self.LoggersClasses)
 
         # load last saved model
         pl_model = self.load_pl_model(
-            model_idx,
-            checkpoint_params.filename,
-            checkpoint_params.dirpath,
+            model_idx=model_idx,
+            dir_path=checkpoint_params.dirpath,
+            file_name=checkpoint_params.filename,
             find_last=True)
 
         # collect predictions made on test dataset
@@ -420,6 +419,15 @@ class Experimentator:
         self.exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
         self.checkpoint_params.filename = self.exp_date
 
+        # setting lightning module and lightning trainer
+        # pl_module = self.create_lightning_module(
+        #     learning_params=self.learning_params)
+        # pl_trainer = get_trainer(
+        #     self.trainer_params,
+        #     self.checkpoint_params,
+        #     self.early_stopping_params
+        # )
+
         # init variables
         predictions = []
 
@@ -440,7 +448,8 @@ class Experimentator:
                     continue
 
                 try:
-                    model_preds_df = self._experiment_step(tsm, model_idx)
+                    model_preds_df = self._experiment_step(
+                        tsm=tsm, model_idx=model_idx)
                     predictions.append(
                         PredictionRecord(
                             dataset_id=dataset_idx,
@@ -851,6 +860,7 @@ class Experimentator:
 
         m_params = self.models_params.iloc[model_idx]
         tsm = self.load_time_series_module(dataset_idx)
+        # TODO: fix logger params
         logger_params = LoggerParams(logs_path, m_params.name_, exp_date)
 
         return get_trained_pl_model(
@@ -913,13 +923,14 @@ class Experimentator:
                     {
                         "models_params": self.models_params,
                         "datasets_params": self.datasets_params,
-                        "logs_path": self.logs_path,
                         "learning_params": self.learning_params,
                         "WrapperCls": self.WrapperCls,
                         "wrapper_kwargs": self.wrapper_kwargs,
                         "trainer_params": self.trainer_params,
                         "checkpoint_params": self.checkpoint_params,
                         "early_stopping_params": self.early_stopping_params,
+                        "loggers_params": self.loggers_params,
+                        "LoggersClasses": self.LoggersClasses,
                         "predictions": self.predictions,
                         "exp_date": self.exp_date
                     },
@@ -952,13 +963,14 @@ def load_experimentator(path: str) -> Experimentator:
         exp = Experimentator(
             models_params=attrs["models_params"],
             datasets_params=attrs["datasets_params"],
-            logs_path=attrs["logs_path"],
             learning_params=attrs["learning_params"],
             WrapperCls=attrs["WrapperCls"],
             wrapper_kwargs=attrs["wrapper_kwargs"],
             trainer_params=attrs["trainer_params"],
             checkpoint_params=attrs["checkpoint_params"],
             early_stopping_params=attrs["early_stopping_params"],
+            loggers_params=attrs["loggers_params"],
+            LoggersClasses=attrs["LoggersClasses"]
         )
         exp.predictions = attrs["predictions"]
         exp.exp_date = attrs["exp_date"]

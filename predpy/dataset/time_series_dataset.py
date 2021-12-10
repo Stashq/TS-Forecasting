@@ -4,6 +4,7 @@ series datasets classes.
 from torch.utils.data import Dataset
 import pandas as pd
 from abc import abstractmethod
+from typing import Union, List
 
 
 class TimeSeriesDataset(Dataset):
@@ -19,7 +20,7 @@ class TimeSeriesDataset(Dataset):
         self,
         sequence: pd.DataFrame,
         window_size: int,
-        target: str
+        target: Union[List[str], str]
     ):
         """Creates *TimeSeriesDataset* instance.
 
@@ -47,7 +48,7 @@ class TimeSeriesDataset(Dataset):
         self,
         start_idx: int = None,
         end_idx: int = None
-    ) -> pd.Series:
+    ) -> pd.DataFrame:
 
         """Returns dataset labels from provided range.\n
 

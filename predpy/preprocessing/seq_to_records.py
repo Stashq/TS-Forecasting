@@ -3,17 +3,17 @@
 Every record is a tuple containing a sequence (model input data) and a single
 target value following after sequence (predicted value).
 """
-from typing import Tuple, List
+from typing import Tuple, List, Union
 import pandas as pd
 from tqdm.notebook import tqdm
 
-Record = Tuple[pd.DataFrame, float]
+Record = Tuple[pd.DataFrame, pd.Series]
 
 
 def _get_seq_record(
     time_series: pd.DataFrame,
     window_size: int,
-    target: str,
+    target: Union[List[str], str],
     idx: int
 ) -> Record:
     """Create single record from time series starting from provided position.
@@ -35,6 +35,8 @@ def _get_seq_record(
         Record containing sequence and target value following after it.
     """
     label_position = idx + window_size
+    if not isinstance(target, list):
+        target = [target]
 
     sequence = time_series[idx:label_position]
     label = time_series.iloc[label_position][target]
@@ -44,7 +46,7 @@ def _get_seq_record(
 def seq_to_records(
     input_data: pd.DataFrame,
     window_size: int,
-    target: str
+    target: Union[List[str], str]
 ) -> List[Record]:
     """Creates list of records.\n\n
 
