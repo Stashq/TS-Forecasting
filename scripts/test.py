@@ -16,12 +16,14 @@ from predpy.preprocessing import (
     use_dataframe_func, loc, iloc)
 from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
+from tsad.noiser import apply_noise_on_dataframes, white_noise
 
 import pickle
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from tsai.models import TCN, ResNet, TST, RNN, TransformerModel, FCN
 import pandas as pd
+from torch.utils.data import DataLoader, Dataset
 
 
 # # First experiment
@@ -139,84 +141,14 @@ es_p = EarlyStoppingParams(
 # exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 
 exp = load_experimentator(
-    "./saved_experiments/2021-12-10_11:54:55.pkl")
+    "./saved_experiments/2021-12-11_16:34:50.pkl")
 
 tsm = exp.load_time_series_module(0)
+normal_dfs = tsm.get_data_from_range(start=-1000, end=-500, copy=True)
+anomaly_dfs = tsm.get_data_from_range(start=-500, copy=True)
 
-from typing import Union, Tuple, Literal, Callable, List, Type
-from torch.utils.data import Dataset, DataLoader
-
-
-dfs = tsm.get_data_from_range(start=-1, end=99999999, copy=True)
-dfs[0].iat[0, 0] = -100
-x = 0
-
-
-# def seqs_to_type(
-#     seqs: List[pd.DataFrame],
-#     type_: Union[
-#        DataLoader, Dataset, List[pd.DataFrame]]
-# ) -> Union[DataLoader, Dataset, List[pd.DataFrame]]:
-#     pass
-
-# def add_nothing(
-#     seqs: List[pd.DataFrame],
-#     deal_with_negativity: str = None,
-# ):
-#     return seqs
-
-# create_anomaly(
-#     tsm=tsm, anomaly_creation=add_nothing, range_="all",
-#     deal_with_negativity="abs", return_type=List[pd.DataFrame]
-# )
-
-NEGATIVITY_REMOVING_METHODS = Literal["abs", "resample", "zero"]
-
-def apply_noise(
-    row: pd.Series,
-    make_noise: Callable,
-    negativity: NEGATIVITY_REMOVING_METHODS = None,
-    max_tries: int = 5,
-    *func_args, **func_kwargs
-) -> pd.Series:
-    result = row.apply(make_noise, args=func_args, **func_kwargs)
-    mask = result < 0
-    if mask.any() and negativity is not None:
-        if negativity == "abs":
-            result[mask] = result[mask].apply(abs)
-        elif negativity == "resample":
-            i = 0
-            while mask.any() and i < max_tries:
-                result[mask] = result[mask].apply(
-                    make_noise, args=func_args, **func_kwargs)
-                mask = result < 0
-                i += 1
-            if mask.any():
-                result[mask] = result[mask].apply(abs)
-        elif negativity == "zero":
-            result[mask] = 0
-        else:
-            ValueError("Unknown removing negativity method.")
-    return result
-
-def white_noise(
-    row: pd.Series,
-    loc: float = 0.0,
-    scale: float = 1.0
-):
-    result = row + loc + scale * np.random.randn()
-    return result
-
-tmp1 = dfs[0].apply(apply_noise, make_noise=white_noise, negativity=None, loc=-0.3)
-tmp2 = dfs[0].apply(apply_noise, make_noise=white_noise, negativity="abs", loc=-0.3)
-tmp3 = dfs[0].apply(apply_noise, make_noise=white_noise, negativity="resample", loc=-0.3)
-tmp4 = dfs[0].apply(apply_noise, make_noise=white_noise, negativity="zero", loc=-0.3)
-
-x = 0
-
-# , result_type='expand'
-
-
+apply_noise_on_dataframes(
+    anomaly_dfs, make_noise=white_noise, negativity="abs", loc=5, scale=1.0)
 
 # from functools import wraps
 # def anomaly_creation_wrapper(anomaly_creation):
@@ -240,29 +172,29 @@ x = 0
 #     return create_anomaly
 
 
-
-
-
 # =============================================================================
 
-# from tsad.anomaly_detector import PredictionAnomalyDetector
+from tsad.anomaly_detector import PredictionAnomalyDetector
 
-# model = exp.load_pl_model(
-#     model_idx=0,
-#     dir_path="checkpoints/household_power_consumption/LSTM_h200_l1")
+model = exp.load_pl_model(
+    model_idx=0,
+    dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1")
 
-# ad = PredictionAnomalyDetector(model)
+ad = PredictionAnomalyDetector(model)
 
-# anomalies = []
-# i = 0
+ad.fit(
+    train_data=DataLoader(
+        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+        batch_size=tsm.batch_size),
+    anomaly_data=DataLoader(
+        MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
+        batch_size=tsm.batch_size),
+    normal_data=DataLoader(
+        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+        batch_size=tsm.batch_size),
+    class_weight=None, verbose=True, plot=True
+)
 
-# for data in tsm.train_dataloader():
-#     anomalies += [data]
+ad.find_anomalies(tsm.test_dataloader())
 
-# ad.fit(
-#     dataloader=tsm.train_dataloader(),
-#     anomaly_data=tsm.val_dataloader(),
-#     normal_data=tsm.test_dataloader()
-# )
-
-# ad.find_anomalies(tsm.test_dataloader())
+x = 0

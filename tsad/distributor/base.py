@@ -15,7 +15,21 @@ class Distributor(ABC):
         pass
 
     @abstractmethod
-    def probs(
+    def cdf(
+        self,
+        data: np.ndarray
+    ) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def ppf(
+        self,
+        data: np.ndarray
+    ) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def pdf(
         self,
         data: np.ndarray
     ) -> np.ndarray:

@@ -697,7 +697,7 @@ class Experimentator:
             fillcolor="red", opacity=0.3, layer="below", line_width=1,
             annotation_text="test")
 
-        if isinstance(file_path, str):
+        if file_path is not None:
             plot(fig, filename=file_path)
         else:
             fig.show()
@@ -762,7 +762,7 @@ class Experimentator:
         )
 
         fig = go.Figure(data=data, layout=layout)
-        if isinstance(file_path, str):
+        if file_path is not None:
             plot(fig, filename=file_path)
         else:
             fig.show()
@@ -1047,7 +1047,7 @@ def plot_aggregated_predictions(
     )
 
     fig = go.Figure(data=data, layout=layout)
-    if isinstance(file_path, str):
+    if file_path is not None:
         plot(fig, filename=file_path)
     else:
         fig.show()

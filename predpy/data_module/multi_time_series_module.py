@@ -6,7 +6,7 @@ Split data between training, validation, test datasets and stores them using
 *TimeSeriesDataset* classes.
 """
 import math
-from typing import Union, Tuple, List, Callable
+from typing import Union, Tuple, List
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from predpy.dataset import MultiTimeSeriesDataset, TimeSeriesDataset
@@ -398,15 +398,24 @@ class MultiTimeSeriesModule(LightningDataModule):
 
     def _global_data_id_to_seq_data_id(
         self,
-        idx: int
+        idx: int,
+        ending_idx: bool = False
     ) -> Tuple[int, int]:
+
+        def condition(idx, end):
+            if ending_idx:
+                return idx <= end
+            else:
+                return idx < end
+
         start = 0
         for i, seqs in enumerate(self.sequences):
             end = start + seqs.shape[0]
-            if idx < end:
+            if condition(idx, end):
                 time_series_idx = i
                 local_idx = idx - start
                 return time_series_idx, local_idx
+            start = end
         return None, None
 
     def _global_data_ranges_to_seq_data_ids(
@@ -414,29 +423,33 @@ class MultiTimeSeriesModule(LightningDataModule):
         start: int = None,
         end: int = None
     ):
-        if start > end:
-            raise ValueError("Start index cannot be greater than end index.")
-        max_end = sum([seqs.shape[0] for seqs in self.sequences]) - 1
+        max_end = sum([seqs.shape[0] for seqs in self.sequences])
 
-        start_ts, start_local_idx = None, None
-        end_ts, end_local_idx = None, None
-        if start is None or start < 0:
-            start_ts, start_local_idx = (0, 0)
-        elif start > max_end:
+        if start is None:
+            start = 0
+            # start_ts, start_local_idx = (0, 0)
+        elif start < 0:
+            start = max_end + start
+            if start < 0:
+                raise ValueError("Index out of range.")
+        elif start > max_end - 1:
             raise ValueError(
-                f"Start index cannot be greater than max index {max_end}.")
-        else:
-            start_ts, start_local_idx =\
-                self._global_data_id_to_seq_data_id(start)
+                f"Start index cannot be greater than {max_end - 1}.")
 
         if end is None or end > max_end:
-            end_ts, end_local_idx =\
-                self._global_data_id_to_seq_data_id(max_end)
-            end_local_idx += 1
+            end = max_end
         elif end < 0:
-            raise ValueError("End index cannot be less than 0.")
-        else:
-            end_ts, end_local_idx = self._global_data_id_to_seq_data_id(end)
+            end = max_end + end
+            if end < 0:
+                raise ValueError("Index out of range.")
+
+        start_ts, start_local_idx =\
+            self._global_data_id_to_seq_data_id(start)
+        end_ts, end_local_idx =\
+            self._global_data_id_to_seq_data_id(end, ending_idx=True)
+
+        if start > end:
+            raise ValueError("Start index cannot be greater than end index.")
 
         return (start_ts, start_local_idx, end_ts, end_local_idx)
 

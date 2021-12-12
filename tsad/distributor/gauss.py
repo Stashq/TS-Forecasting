@@ -1,4 +1,4 @@
-from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal, norm
 import numpy as np
 from .base import Distributor
 
@@ -18,9 +18,27 @@ class GaussianDistributor(Distributor):
         self._mvnormal = multivariate_normal(
             mean=self._mean, cov=self._cov, allow_singular=True)
 
-    def probs(self, data: np.ndarray) -> np.ndarray:
+    def cdf(self, data: np.ndarray) -> np.ndarray:
+        if self._mvnormal is None:
+            raise AttributeError(BEFORE_FIT_ERROR)
+        probs = self._mvnormal.cdf(data)
+        if len(probs.shape) == 1:
+            probs = np.expand_dims(probs, axis=1)
+        return probs
+
+    def ppf(
+        self,
+        prob: float,
+        dim: int
+    ) -> float:
+        loc = self._mean[dim]
+        scale = self._cov[dim][dim]
+        return norm.ppf(prob, loc=loc, scale=scale)
+
+    def pdf(self, data: np.ndarray) -> np.ndarray:
         if self._mvnormal is None:
             raise AttributeError(BEFORE_FIT_ERROR)
         probs = self._mvnormal.pdf(data)
-        probs = np.expand_dims(probs, axis=1)
+        if len(probs.shape) == 1:
+            probs = np.expand_dims(probs, axis=1)
         return probs
