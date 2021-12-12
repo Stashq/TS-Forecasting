@@ -176,7 +176,8 @@ class Experimentator:
             training_proportion=ds_params.split_proportions[0])
 
         sequences = self._split_ts_where_breaks(df, max_break=4)
-        sequences = self._filter_too_short(sequences, ds_params.window_size)
+        sequences = self._filter_too_short_series(
+            sequences, ds_params.window_size)
         tsm = MultiTimeSeriesModule(
             sequences=sequences,
             dataset_name=ds_params.name_,
@@ -221,7 +222,7 @@ class Experimentator:
 
         return splitted_time_series
 
-    def _filter_too_short(
+    def _filter_too_short_series(
         self,
         multi_time_series: List[pd.DateFrame],
         window_size: int
@@ -294,47 +295,7 @@ class Experimentator:
         tsm: MultiTimeSeriesModule,
         model_idx: int
     ):
-        pl.seed_everything(42)
-
-        m_params = self.models_params.iloc[model_idx]
-        chp_dirpath = self.checkpoint_params.dirpath
-
-        checkpoint_params = CheckpointParams(**asdict(self.checkpoint_params))
-        trainer_params = TrainerParams(**asdict(self.trainer_params))
-        early_stopping_params = EarlyStoppingParams(
-            **asdict(self.early_stopping_params))
-        loggers_params = [
-            LoggerParams(**asdict(params))
-            for params in self.loggers_params]
-
-        # setting files paths and logger with model name
-        for log in loggers_params:
-            log.name = m_params.name_
-            log.version = self.exp_date
-        checkpoint_params.dirpath =\
-            os.path.join(chp_dirpath, tsm.name_, m_params.name_)
-
-        pl_model = self.WrapperCls(
-            model=m_params.cls_(**m_params.init_params),
-            **asdict(self.learning_params),
-            **self.wrapper_kwargs)
-
-        # training model
-        pl_model = get_trained_pl_model(
-            pl_model=pl_model,
-            data_module=tsm,
-            trainer_params=trainer_params,
-            checkpoint_params=checkpoint_params,
-            early_stopping_params=early_stopping_params,
-            loggers_params=loggers_params,
-            LoggersClasses=self.LoggersClasses)
-
-        # load last saved model
-        pl_model = self.load_pl_model(
-            model_idx=model_idx,
-            dir_path=checkpoint_params.dirpath,
-            file_name=checkpoint_params.filename,
-            find_last=True)
+        pl_model = self.train_model(model_idx=model_idx, tsm=tsm)
 
         # collect predictions made on test dataset
         preds = pl_model.get_dataset_predictions(tsm.test_dataloader())
@@ -419,15 +380,6 @@ class Experimentator:
         self.exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
         self.checkpoint_params.filename = self.exp_date
 
-        # setting lightning module and lightning trainer
-        # pl_module = self.create_lightning_module(
-        #     learning_params=self.learning_params)
-        # pl_trainer = get_trainer(
-        #     self.trainer_params,
-        #     self.checkpoint_params,
-        #     self.early_stopping_params
-        # )
-
         # init variables
         predictions = []
 
@@ -475,34 +427,11 @@ class Experimentator:
 
         return self
 
-    def get_target_scaler(
+    def get_targets_scaler(
         self,
         dataset_idx: int,
-        # scaler: TransformerMixin
     ) -> TransformerMixin:
         return self.datasets_params.iloc[dataset_idx]["scaler"]
-        # df = pd.read_csv(ds_params.path, **ds_params.load_params)
-        # return fit_scaler(
-        #     df[[ds_params.target]],
-        #     ds_params.split_proportions[0],
-        #     scaler
-        # )
-        """Creates scaler for target column of selected dataset.
-
-        Fits scaler based on training data.
-
-        Parameters
-        ----------
-        dataset_idx : int
-            Index of parameters stored in *datasets_params*.
-        scaler : TransformerMixin
-            Scaler instance.
-
-        Returns
-        -------
-        TransformerMixin
-            Fitted scaler.
-        """
 
     def _check_if_has_predictions(self):
         assert self.predictions is not None and self.predictions.shape[0] > 0,\
@@ -788,7 +717,7 @@ class Experimentator:
         scaler_dataset_idx: int,
         target_name: Union[str, List[str]] = None
     ) -> List[float]:
-        scaler = self.get_target_scaler(scaler_dataset_idx)
+        scaler = self.get_targets_scaler(scaler_dataset_idx)
 
         result = None
         if target_name is not None and isinstance(time_series, pd.Series):
@@ -816,18 +745,13 @@ class Experimentator:
 
         return result
 
-    def retrain_model(
+    def train_model(
         self,
         model_idx: int,
-        dataset_idx: int,
-        logs_path: str,
-        trainer_params: TrainerParams,
-        checkpoint_params: CheckpointParams,
-        early_stopping_params: EarlyStoppingParams,
-        learning_params: LearningParams = None
+        dataset_idx: int = None,
+        tsm: MultiTimeSeriesModule = None
     ) -> pl.LightningModule:
-        """Train single model on single dataset from experimentator data
-        without saving predictions.
+        """Train single model on single dataset from experimentator data.
 
         Parameters
         ----------
@@ -853,26 +777,57 @@ class Experimentator:
         pl.LightningModule
             Trained lightning module.
         """
-        if learning_params is None:
-            learning_params = self.learning_params
-        exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
-        checkpoint_params.filename = exp_date
+        m_params = self.models_params.iloc[model_idx]
+
+        if tsm is None and dataset_idx is not None:
+            tsm = self.load_time_series_module(dataset_idx)
+        elif tsm is None and dataset_idx is None:
+            raise ValueError(
+                "Dataset or its index has to be passed.")
+
+        pl.seed_everything(42)
 
         m_params = self.models_params.iloc[model_idx]
-        tsm = self.load_time_series_module(dataset_idx)
-        # TODO: fix logger params
-        logger_params = LoggerParams(logs_path, m_params.name_, exp_date)
+        chp_dirpath = self.checkpoint_params.dirpath
 
-        return get_trained_pl_model(
-            model=m_params.cls_(**m_params.hyperparams),
-            data_module=tsm, trainer_params=trainer_params,
-            logger_params=logger_params,
+        checkpoint_params = CheckpointParams(**asdict(self.checkpoint_params))
+        trainer_params = TrainerParams(**asdict(self.trainer_params))
+        early_stopping_params = EarlyStoppingParams(
+            **asdict(self.early_stopping_params))
+        loggers_params = [
+            LoggerParams(**asdict(params))
+            for params in self.loggers_params]
+
+        # setting files paths and logger with model name
+        for log in loggers_params:
+            log.name = m_params.name_
+            log.version = self.exp_date
+        checkpoint_params.dirpath =\
+            os.path.join(chp_dirpath, tsm.name_, m_params.name_)
+
+        pl_model = self.WrapperCls(
+            model=m_params.cls_(**m_params.init_params),
+            **asdict(self.learning_params),
+            **self.wrapper_kwargs)
+
+        # training model
+        pl_model = get_trained_pl_model(
+            pl_model=pl_model,
+            data_module=tsm,
+            trainer_params=trainer_params,
             checkpoint_params=checkpoint_params,
             early_stopping_params=early_stopping_params,
-            learning_params=learning_params,
-            WrapperCls=self.WrapperCls,
-            wrapper_kwargs=self.wrapper_kwargs
-        )
+            loggers_params=loggers_params,
+            LoggersClasses=self.LoggersClasses)
+
+        # load last saved model
+        pl_model = self.load_pl_model(
+            model_idx=model_idx,
+            dir_path=checkpoint_params.dirpath,
+            file_name=checkpoint_params.filename,
+            find_last=True)
+
+        return pl_model
 
     def change_dataset_path(
         self,
@@ -882,7 +837,7 @@ class Experimentator:
     ):
         """Changes stored path to selected dataset.
 
-        Additionaly changes name of dataset to name same as name of provided
+        Default changes also name of dataset to name same as name of provided
         path.
 
         Parameters
@@ -895,7 +850,9 @@ class Experimentator:
             If True, set file name as dataset name. By default True.
         """
         self.datasets_params.at[dataset_idx, 'path'] = path
-        # TODO: set name in experimentators dataset params
+        if set_name:
+            name = os.path.basename(os.path.splitext(path)[0])
+            self.datasets_params.at[dataset_idx, 'name_'] = name
 
     def save(self, path: str, safe: bool = False):
         """Save experimentator to pickle file.

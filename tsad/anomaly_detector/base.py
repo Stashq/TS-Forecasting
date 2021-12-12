@@ -140,11 +140,6 @@ class AnomalyDetector:
         verbose: bool = True,
         plot: bool = False
     ):
-        # if normal_data is None:
-        #     normal_data = np.array([
-        #         seq.cpu().detach().numpy()
-        #         for seq, _ in train_data.dataset
-        #     ])
         self.fit_distributor(train_data, verbose)
         self.fit_threshold(
             normal_data, anomaly_data, class_weight, verbose, plot)
@@ -152,15 +147,15 @@ class AnomalyDetector:
     def find_anomalies(
         self,
         data: Union[DataLoader, Dataset],
-        return_indices: bool = True,
-        verbose: bool = False,
-        plot: bool = False
+        return_indices: bool = False,
+        verbose: bool = True,
+        plot: bool = True
     ) -> Union[Tuple[np.ndarray], np.ndarray]:
         preds = self.dataset_forward(data, verbose)
         cdf = self.distributor.cdf(preds)
         result = self.thresholder.predict(cdf)
         if plot:
-            self.plot_anomaly_detection(preds, title="Predictions")
+            self.plot_anomaly_detection(preds, title="Finding anomalies")
         if return_indices is True:
             result = np.argwhere(result == 1)
         return result
@@ -190,15 +185,6 @@ class AnomalyDetector:
                 norm.ppf(th, mean, var))]
         pos = np.vstack(dist_x).T
         dist_y = self.distributor.pdf(pos)
-        x = 0
-        # tmp_y = norm.pdf(dist_x[0], loc, scale)
-        # fig.add_trace(
-        #     go.Scatter(
-        #         name="Normal distribution",
-        #         x=dist_x[0].tolist(),
-        #         y=tmp_y.tolist(),
-        #         line=dict(color="pink")),
-        #     row=dim+1, col=1)
 
         for dim in range(n_dims):
             if classes is not None:
@@ -246,7 +232,6 @@ class AnomalyDetector:
             pl.offline.plot(fig, filename=file_path)
         else:
             fig.show()
-        x = 0
 
         # fig = ff.create_distplot(
         #     [preds[:, 0][normal_ids].tolist(),

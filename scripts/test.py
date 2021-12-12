@@ -195,6 +195,6 @@ ad.fit(
     class_weight=None, verbose=True, plot=True
 )
 
-ad.find_anomalies(tsm.test_dataloader())
+# ad.find_anomalies(tsm.test_dataloader())
 
 x = 0
