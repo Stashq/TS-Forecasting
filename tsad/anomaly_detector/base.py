@@ -172,28 +172,25 @@ class AnomalyDetector:
         title: str = None,
         file_path: str = None
     ):
-        n_dims = preds.shape[1]
+        n_dims = self.distributor._n_dims
         fig = make_subplots(rows=n_dims, cols=1)
         pdf = self.distributor.pdf(preds)
 
-        loc, scale = norm.fit(preds[:134])
-            # loc=self.distributor._mean[0],
-            # scale=self.distributor._cov[0][0])
-
         dist_x = []
         threshold = []
-        for dim in range(n_dims):
-            mean = self.distributor._mean[dim]
-            dist_x += [np.linspace(0, mean + 0.3, num=1000)]
+        for dim in range(self.distributor._n_dims):
+            mean = self.distributor._means[dim]
+            var = self.distributor._vars[dim]
+            dist_x += [np.linspace(0, mean + 2 * var, num=1000)]
 
             th =\
                 -self.thresholder.intercept_[dim]\
                 / self.thresholder.coef_[0, dim]
             threshold += [float(
-                norm.ppf(th, loc, scale))]
-        pos = np.dstack(dist_x)
+                norm.ppf(th, mean, var))]
+        pos = np.vstack(dist_x).T
         dist_y = self.distributor.pdf(pos)
-
+        x = 0
         # tmp_y = norm.pdf(dist_x[0], loc, scale)
         # fig.add_trace(
         #     go.Scatter(

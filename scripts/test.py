@@ -148,7 +148,7 @@ normal_dfs = tsm.get_data_from_range(start=-1000, end=-500, copy=True)
 anomaly_dfs = tsm.get_data_from_range(start=-500, copy=True)
 
 apply_noise_on_dataframes(
-    anomaly_dfs, make_noise=white_noise, negativity="abs", loc=5, scale=1.0)
+    anomaly_dfs, make_noise=white_noise, negativity="abs", loc=0, scale=0.35)
 
 # from functools import wraps
 # def anomaly_creation_wrapper(anomaly_creation):
