@@ -22,3 +22,6 @@ from .preprocessing import (
     drop_if_index_is_in, drop_if_equals, drop_if_index_equals, loc, iloc)
 from .feature_engineering import moving_average
 from .seq_to_records import seq_to_records, Record
+from .statistic_anomalies_detection import (
+    dtw_distance, ts_distance_matrix, get_residuals, get_residual_filter,
+    get_variance_filter, plot_interact_filtering)

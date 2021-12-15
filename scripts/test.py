@@ -24,6 +24,9 @@ from sklearn.preprocessing import MinMaxScaler
 from tsai.models import TCN, ResNet, TST, RNN, TransformerModel, FCN
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
+from prophet import Prophet
+from tsad.anomaly_detector import PredictionAnomalyDetector
+
 
 
 # # First experiment
@@ -59,7 +62,7 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    (iloc, {"rows_end": 1500}),
+    # (iloc, {"rows_end": 1500}),
     # (iloc, {"rows_start": -20000}),
 ]
 preprocessing_pipeline = [
@@ -143,38 +146,55 @@ es_p = EarlyStoppingParams(
 exp = load_experimentator(
     "./saved_experiments/2021-12-11_16:34:50.pkl")
 
+# =============================================================================
+
+# exp.plot_preprocessed_dataset(0, True)
+# x = 0
+
+# =============================================================================
+
 tsm = exp.load_time_series_module(0)
+
+# =============================================================================
+from predpy.preprocessing.statistic_anomalies_detection import collective_isolation_forest
+collective_isolation_forest(tsm.sequences[0].iloc[:1500, 0], 500)
+x = 0
+# =============================================================================
+
+# Prophet testing
+# prophet = Prophet()
+# df = pd.concat(tsm.sequences)[["Global_active_power"]]
+# df = df.reset_index().rename(
+#     columns={"datetime": "ds", "Global_active_power": "y"})
+# prophet.fit(df)
+
+
+# with open("./prophet.pkl", "rb") as file:
+#     prophet = pickle.load(file)
+# tmp = prophet.make_future_dataframe(periods=10)
+# tmp = prophet.predict(tmp)
+
+# =============================================================================
+
+from sklearn.ensemble import IsolationForest
+
+df = pd.concat(tsm.sequences)[["Global_active_power"]]
+gap = (df['Global_active_power'].values.reshape(-1,1))
+model_isoforest = IsolationForest()
+model_isoforest.fit(gap)
+scores = model_isoforest.score_samples(gap)
+df['anomaly_scores'] = model_isoforest.score_samples(gap)
+df['anomaly_classification'] = model_isoforest.predict(
+    df['Global_active_power'].values.reshape(-1,1))
+x = 0
+
+# =============================================================================
+
 normal_dfs = tsm.get_data_from_range(start=-1000, end=-500, copy=True)
 anomaly_dfs = tsm.get_data_from_range(start=-500, copy=True)
 
 apply_noise_on_dataframes(
     anomaly_dfs, make_noise=white_noise, negativity="abs", loc=0, scale=0.35)
-
-# from functools import wraps
-# def anomaly_creation_wrapper(anomaly_creation):
-#     @wraps
-#     def create_anomaly(
-#         tsm: MultiTimeSeriesModule,
-#         range_: Union[
-#             Tuple[int, int],
-#             Literal["all", "train", "val", "test"]] = "all",
-#         deal_with_negativity: str = None,
-#         return_type: Union[
-#             MultiTimeSeriesModule, DataLoader, Dataset,
-#             List[pd.DataFrame]] = None,
-#         *args, **kwargs
-#     ):
-#         seqs_dfs = copy_data_from_range(tsm, range_)
-#         seqs_dfs = anomaly_creation(
-#             seqs_dfs, deal_with_negativity, *ars, **kwargs)
-#         result = seqs_to_type(seqs_dfs, type_=return_type)
-#         return result
-#     return create_anomaly
-
-
-# =============================================================================
-
-from tsad.anomaly_detector import PredictionAnomalyDetector
 
 model = exp.load_pl_model(
     model_idx=0,
@@ -192,7 +212,7 @@ ad.fit(
     normal_data=DataLoader(
         MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
         batch_size=tsm.batch_size),
-    class_weight=None, verbose=True, plot=True
+    class_weight=None, verbose=True, plot_time_series=True
 )
 
 # ad.find_anomalies(tsm.test_dataloader())

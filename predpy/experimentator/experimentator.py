@@ -209,15 +209,18 @@ class Experimentator:
         if splits.shape[0] == 0:
             splitted_time_series = [time_series]
         else:
+            index = time_series.index
             splitted_time_series = [
-                time_series.loc[:splits[0]]
+                time_series.iloc[:index.get_loc(splits[0])]
             ]
             splitted_time_series += [
-                time_series.loc[splits[i]:splits[i+1]]
+                time_series.iloc[
+                    index.get_loc(splits[i]):index.get_loc(splits[i+1])]
                 for i in range(len(splits)-1)
             ]
             splitted_time_series += [
-                time_series.loc[splits[-1]:]
+                time_series.iloc[
+                    index.get_loc(splits[-1]):]
             ]
 
         return splitted_time_series
@@ -461,11 +464,10 @@ class Experimentator:
         scaler_dataset_idx: int,
         true_vals: Union[pd.Series, pd.DataFrame],
         predictions_df: pd.DataFrame,
-        target: str
+        target: Union[str, List[str]]
     ) -> Tuple[List[float], pd.DataFrame]:
         vals = self._scale_inverse(
             true_vals, scaler_dataset_idx, target)
-        # predictions_df["predictions"] = \
         predictions = \
             predictions_df["predictions"].apply(
                 lambda preds: self._scale_inverse(
@@ -488,27 +490,27 @@ class Experimentator:
                     pd.Series(data=[df.iloc[0]], index=[''], name=df.name)]
         return pd.concat(dfs_with_gaps)
 
-    def _preds_to_plotly_data(
+    def ts_to_plotly_data(
         self,
-        preds: Union[pd.Series, pd.DataFrame],
+        ts: Union[pd.Series, pd.DataFrame],
         name: str,
         version: str = ""
     ) -> List[go.Scatter]:
         data = []
-        if isinstance(preds, pd.Series):
+        if isinstance(ts, pd.Series):
             data += [go.Scatter(
-                x=preds.index, y=preds, connectgaps=False,
+                x=ts.index, y=ts, connectgaps=False,
                 name=name + version)]
-        elif isinstance(preds, pd.DataFrame):
-            if len(preds.columns) > 1:
+        elif isinstance(ts, pd.DataFrame):
+            if len(ts.columns) > 1:
                 data += [go.Scatter(
-                        x=preds.index, y=preds[col], connectgaps=False,
+                        x=ts.index, y=ts[col], connectgaps=False,
                         name=name + f"-{col}" + version)
-                    for col in preds.columns
+                    for col in ts.columns
                 ]
             else:
                 data += [go.Scatter(
-                    x=preds.index, y=preds.iloc[:, 0], connectgaps=False,
+                    x=ts.index, y=ts.iloc[:, 0], connectgaps=False,
                     name=name + version)]
         return data
 
@@ -521,12 +523,12 @@ class Experimentator:
         true_vals = self._split_ts_where_breaks(true_vals)
         true_vals = self._concat_dfs_with_gaps(true_vals)
 
-        data = self._preds_to_plotly_data(true_vals, "true_values", version)
+        data = self.ts_to_plotly_data(true_vals, "true_values", version)
         for _, row in predictions_df.iterrows():
             model_name = self.models_params.iloc[row["model_id"]].name_
             preds = self._split_ts_where_breaks(row["predictions"])
             preds = self._concat_dfs_with_gaps(preds)
-            data += self._preds_to_plotly_data(preds, model_name, version)
+            data += self.ts_to_plotly_data(preds, model_name, version)
         return data
 
     def plot_preprocessed_dataset(
@@ -559,7 +561,8 @@ class Experimentator:
         for ts in tsm.sequences:
             ts_with_gaps += [ts]
             # adding gap
-            pd.DataFrame(data=[ts.iloc[-1].to_dict()], index=[''])
+            ts_with_gaps += [pd.DataFrame(
+                data=[ts.iloc[-1].to_dict()], index=[''])]
 
             # take into account gap
             counter += ts.shape[0]
@@ -741,7 +744,7 @@ class Experimentator:
             result = scaler.inverse_transform(scaler_input)
             result = result.T[cols_ids]
         elif target_name is None and isinstance(time_series, pd.DataFrame):
-            result = scaler.inverse_transform(time_series).T
+            result = scaler.inverse_transform(time_series)
 
         return result
 

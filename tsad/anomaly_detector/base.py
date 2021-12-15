@@ -1,24 +1,19 @@
 from tsad.distributor import Distributor, GaussianDistributor
 
 import torch
-from tqdm.auto import tqdm
 import numpy as np
+import pandas as pd
 from abc import abstractmethod
 from typing import Type, Union, Tuple, Dict, List
 from torch.utils.data import DataLoader, Dataset
 from sklearn.linear_model import LogisticRegression
 from string import Template
-from plotly.subplots import make_subplots
-import plotly.graph_objs as go
 import plotly as pl
+import plotly.graph_objs as go
+from plotly.offline import plot
+from plotly.subplots import make_subplots
 from scipy.stats import norm
 # import plotly.figure_factory as ff
-
-
-import matplotlib.pyplot as plt
-
-from sklearn import linear_model
-from scipy.special import expit
 from sklearn.metrics import confusion_matrix
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
@@ -41,27 +36,19 @@ class AnomalyDetector:
     def forward(
         self,
         sequences: torch.Tensor,
-        labels: torch.Tensor
-    ) -> np.ndarray:
+        labels: torch.Tensor,
+        return_predictions: bool = False
+    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         pass
 
-    # TODO: zmienić na szybszy!!
+    @abstractmethod
     def dataset_forward(
         self,
         data: Union[DataLoader, Dataset],
-        verbose: bool = False
-    ) -> np.ndarray:
-        results = []
-        iterator = None
-        if verbose:
-            iterator = tqdm(data, desc="Time series predictions")
-        else:
-            iterator = data
-
-        for data in iterator:
-            results += [self.forward(data["sequence"], data["label"])]
-        results = np.concatenate(results, axis=0)
-        return results
+        verbose: bool = True,
+        return_predictions: bool = False
+    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
+        pass
 
     def fit_distributor(
         self,
@@ -74,16 +61,22 @@ class AnomalyDetector:
     def _any_forward(
         self,
         data: Union[torch.Tensor, DataLoader, Dataset],
-        verbose: bool = False
-    ) -> np.ndarray:
+        verbose: bool = False,
+        return_predictions: bool = False
+    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         result = None
         if isinstance(data, torch.Tensor):
-            result = self.forward(data["sequence"], data["label"])
+            result = self.forward(
+                data["sequence"], data["label"],
+                return_predictions=return_predictions)
         elif isinstance(data, DataLoader) or isinstance(data, Dataset):
-            result = self.dataset_forward(data, verbose=verbose)
+            result = self.dataset_forward(
+                data, verbose=verbose,
+                return_predictions=return_predictions)
         else:
             raise ValueError(
                 UNKNOWN_TYPE_MSG.substitute(data_type=type(data)))
+
         return result
 
     def fit_threshold(
@@ -92,7 +85,8 @@ class AnomalyDetector:
         anomaly_data: Union[torch.Tensor, DataLoader, Dataset],
         class_weight: Dict = {0: 0.05, 1: 0.95},
         verbose: bool = False,
-        plot: bool = False
+        plot_distribution: bool = False,
+        plot_time_series: bool = False
     ):
         """Fits logistic regressor on distributor probabilities of normal
         and anomaly data.
@@ -107,29 +101,43 @@ class AnomalyDetector:
             Normal data (0) and anomaly (1) weights,
             by default {0: 0.05, 1: 0.95}.
         """
-        normal_preds = self._any_forward(normal_data, verbose)
-        anomaly_preds = self._any_forward(anomaly_data, verbose)
+        n_res, n_preds = self._any_forward(
+            normal_data, verbose, return_predictions=True)
+        a_res, a_preds = self._any_forward(
+            anomaly_data, verbose, return_predictions=True)
         cdf = np.concatenate([
-            self.distributor.cdf(normal_preds),
-            self.distributor.cdf(anomaly_preds)])
-        classes = [0]*len(normal_preds) + [1]*len(anomaly_preds)
+            self.distributor.cdf(n_res),
+            self.distributor.cdf(a_res)])
+        classes = [0]*len(n_res) + [1]*len(a_res)
         self.thresholder = LogisticRegression(
             class_weight=class_weight
         ).fit(cdf, classes)
         pred_cls = self.thresholder.predict(cdf)
-        # plt.hist(cdf[:134], bins=20, label="normal")
-        # plt.hist(cdf[134:], bins=20, label="anomaly")
-        # plt.show()
 
         cm = confusion_matrix(classes, pred_cls)
         print(cm)
-        # self.plot_logistic_regression(cdf, classes)
-        if plot:
-            self.plot_anomaly_detection(
-                preds=np.concatenate([
-                    normal_preds, anomaly_preds]),
+        if plot_distribution:
+            self.plot_with_distribution(
+                vals=np.concatenate([
+                    n_res, a_res]),
                 classes=classes,
                 title="Result of fitting")
+        if plot_time_series:
+            self.plot_with_time_series(
+                time_series=normal_data,
+                pred_anomalies_ids=np.argwhere(
+                    pred_cls[:len(n_res)] == 1).T[0],
+                model_preds=n_preds,
+                title="Detecting anomalies on normal data"
+            )
+            self.plot_with_time_series(
+                time_series=anomaly_data,
+                pred_anomalies_ids=np.argwhere(
+                    pred_cls[len(n_res):] == 1).T[0],
+                true_anomalies_ids=list(range(0, len(a_res))),
+                model_preds=a_preds,
+                title="Detecting anomalies on anomaly data"
+            )
 
     def fit(
         self,
@@ -138,38 +146,49 @@ class AnomalyDetector:
         normal_data: Union[torch.Tensor, DataLoader, Dataset] = None,
         class_weight: Dict = {0: 0.05, 1: 0.95},
         verbose: bool = True,
-        plot: bool = False
+        plot_distribution: bool = False,
+        plot_time_series: bool = False
     ):
         self.fit_distributor(train_data, verbose)
         self.fit_threshold(
-            normal_data, anomaly_data, class_weight, verbose, plot)
+            normal_data, anomaly_data, class_weight, verbose,
+            plot_distribution, plot_time_series)
 
     def find_anomalies(
         self,
         data: Union[DataLoader, Dataset],
+        classes_: List[int] = None,
         return_indices: bool = False,
         verbose: bool = True,
-        plot: bool = True
+        plot_dist: bool = False,
+        plot_time_series: bool = False
     ) -> Union[Tuple[np.ndarray], np.ndarray]:
-        preds = self.dataset_forward(data, verbose)
-        cdf = self.distributor.cdf(preds)
-        result = self.thresholder.predict(cdf)
-        if plot:
-            self.plot_anomaly_detection(preds, title="Finding anomalies")
+        vals = self.dataset_forward(
+            data, verbose, return_predictions=plot_time_series)
+        if isinstance(vals, tuple):
+            vals, model_preds = vals
+        cdf_res = self.distributor.cdf(vals)
+        result = self.thresholder.predict(cdf_res)
+        if plot_dist:
+            self.plot_with_distribution(
+                cdf_res, title="Anomalies on distribution plot")
+        if plot_time_series:
+            self.plot_with_time_series(
+                model_preds, title="Anomalies on time series plot")
         if return_indices is True:
             result = np.argwhere(result == 1)
         return result
 
-    def plot_anomaly_detection(
+    def plot_with_distribution(
         self,
-        preds: np.ndarray,
+        vals: np.ndarray,
         classes: List[int] = None,
         title: str = None,
         file_path: str = None
     ):
         n_dims = self.distributor._n_dims
         fig = make_subplots(rows=n_dims, cols=1)
-        pdf = self.distributor.pdf(preds)
+        pdf = self.distributor.pdf(vals)
 
         dist_x = []
         threshold = []
@@ -193,7 +212,7 @@ class AnomalyDetector:
                 fig.add_trace(
                     go.Scatter(
                         name="Normal data",
-                        x=preds[:, dim][normal_ids].tolist(),
+                        x=vals[:, dim][normal_ids].tolist(),
                         y=pdf[:, dim][normal_ids].tolist(),
                         mode='markers',
                         line=dict(color="green")),
@@ -201,7 +220,7 @@ class AnomalyDetector:
                 fig.add_trace(
                     go.Scatter(
                         name="Anomaly",
-                        x=preds[:, dim][anomaly_ids].tolist(),
+                        x=vals[:, dim][anomaly_ids].tolist(),
                         y=pdf[:, dim][anomaly_ids].tolist(),
                         mode='markers',
                         line=dict(color="red")),
@@ -210,7 +229,7 @@ class AnomalyDetector:
                 fig.add_trace(
                     go.Scatter(
                         name="Data",
-                        x=preds[:, dim][normal_ids].tolist(),
+                        x=vals[:, dim][normal_ids].tolist(),
                         y=pdf[:, dim][normal_ids].tolist(),
                         mode='markers',
                         line=dict(color="green")),
@@ -240,52 +259,90 @@ class AnomalyDetector:
         #     bin_size=.02)
         # fig.show()
 
-    def plot_logistic_regression(
+    def plot_with_time_series(
         self,
-        X: np.ndarray,
-        y: List[int]
+        time_series: DataLoader,
+        pred_anomalies_ids: List[int],
+        true_anomalies_ids: List[int] = None,
+        model_preds: List[torch.Tensor] = None,
+        title: str = None,
+        file_path: str = None
     ):
-        # General a toy dataset:s it's just
-        # a straight line with some Gaussian noise:
-        # xmin, xmax = -5, 5
-        # n_samples = 100
-        # np.random.seed(0)
-        # X = np.random.normal(size=n_samples)
-        # y = (X > 0).astype(float)
-        # X[X > 0] *= 4
-        # X += 0.3 * np.random.normal(size=n_samples)
+        labels = time_series.dataset.get_labels()
+        dates = labels.index
+        target = labels.columns
 
-        # X = X[:, np.newaxis]
+        true_series = time_series.dataset.sequences
+        if isinstance(true_series, list):
+            true_series = pd.concat(true_series)
+        # true_series = pd.melt(
+        #     true_series.reset_index(),
+        #     id_vars='datetime',
+        #     var_name="column_name",
+        #     value_vars=true_series.columns)
+        # data = [go.Scatter(
+        #     x=true_series["datetime"],
+        #     y=true_series["value"],
+        #     color=true_series["column_name"]
+        # )]
 
-        # Fit the classifier
-        # clf = linear_model.LogisticRegression(C=1e5)
-        # clf.fit(X, y)
-        clf = self.thresholder
+        data = []
+        for col_name in target:
+            data += [go.Scatter(
+                x=true_series.index,
+                y=true_series[col_name],
+                connectgaps=False,
+                name=col_name)]
 
-        # and plot the result
-        plt.figure(1, figsize=(4, 3))
-        plt.clf()
-        plt.scatter(X.ravel(), y, color="black", zorder=20)
-        X_test = np.linspace(-5, 10, 300)
+        for col_name in target:
+            data += [go.Scatter(
+                x=dates[pred_anomalies_ids],
+                y=labels[col_name][pred_anomalies_ids],
+                mode='markers', name="Predicted anomalies",
+                marker=dict(
+                    line=dict(width=5, color='#9467bd'),
+                    symbol='x-thin')
+            )]
 
-        loss = expit(X_test * clf.coef_ + clf.intercept_).ravel()
-        plt.plot(X_test, loss, color="red", linewidth=3)
+        if model_preds is not None:
+            model_preds = np.array([
+                pred.cpu().detach().tolist()
+                for pred in model_preds
+            ])
+            for i, col_name in enumerate(target):
+                data += [go.Scatter(
+                    x=dates, y=model_preds[:, i].tolist(), connectgaps=False,
+                    name=col_name + "_pred")]
 
-        ols = linear_model.LinearRegression()
-        ols.fit(X, y)
-        plt.plot(X_test, ols.coef_ * X_test + ols.intercept_, linewidth=1)
-        plt.axhline(0.5, color=".5")
+        if true_anomalies_ids is not None:
+            for col_name in target:
+                data += [go.Scatter(
+                    x=dates[true_anomalies_ids],
+                    y=labels[col_name][true_anomalies_ids],
+                    mode='markers', name="True anomalies",
+                    marker=dict(
+                        line=dict(width=5, color='#d62728'),
+                        symbol='x-thin')
+                )]
 
-        plt.ylabel("y")
-        plt.xlabel("X")
-        plt.xticks(range(-5, 10))
-        plt.yticks([0, 0.5, 1])
-        plt.ylim(-0.25, 1.25)
-        plt.xlim(-4, 10)
-        plt.legend(
-            ("Logistic Regression Model", "Linear Regression Model"),
-            loc="lower right",
-            fontsize="small",
+        layout = go.Layout(
+            title=title,
+            yaxis=dict(title="values"),
+            xaxis=dict(title='dates')
         )
-        plt.tight_layout()
-        plt.show()
+
+        fig = go.Figure(data=data, layout=layout)
+        if file_path is not None:
+            plot(fig, filename=file_path)
+        else:
+            fig.show()
+
+        # dane:
+        # seria czasowa, wyniki wykrywania anomalii
+        # dodatkowe:
+        # seria anomalia / klasy rekordów serii czasowej, predykcje modelu
+        # dalekie w realizacji:
+        # zakres ufności na około predykcji modelu
+        # na podstawie dystrybucji / modelu regresji
+        # oraz wyliczonej przez model anomalii lub podanej przy inicjalizacji
+        # wartości granicznej prawdopodobieństwa (threshold)
