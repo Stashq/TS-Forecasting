@@ -151,13 +151,41 @@ def get_variance_filter(
     target: str = None
 ):
     ts = _to_series(ts, target)
-    var = ts.rolling(window=window_size, center=True).var()
+    var = ts[::-1].rolling(window=window_size).var()[::-1]
     lower = np.exp(log_variance_limits[0])
     upper = np.exp(log_variance_limits[1])
-    result = (var >= lower) & (var <= upper)
+    anomalies_starts = (var >= lower) & (var <= upper)
+    anomalies_starts[var.isna()] = True
 
-    result[var.isna()] = True
+    count_true = anomalies_starts\
+        .rolling(window=2*window_size-1, center=True)\
+        .sum()
+
+    # head = anomalies_starts[2*window_size::-1]\
+    #     .rolling(window=2*window_size-1, center=True)\
+    #     .sum()[-window_size]
+
+    count_true[count_true.isna()] = 2*window_size-1
+
+    result = count_true == 2*window_size-1
+
     return result
+
+
+# def get_variance_filter(
+#     ts: Union[pd.Series, pd.DataFrame],
+#     window_size: int,
+#     log_variance_limits: Tuple[float],
+#     target: str = None
+# ):
+#     ts = _to_series(ts, target)
+#     var = ts.rolling(window=window_size, center=True).var()
+#     lower = np.exp(log_variance_limits[0])
+#     upper = np.exp(log_variance_limits[1])
+#     result = (var >= lower) & (var <= upper)
+
+#     result[var.isna()] = True
+#     return result
 
 
 def plot_interact_filtering(

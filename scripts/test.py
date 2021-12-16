@@ -128,7 +128,7 @@ exp = Experimentator(
     early_stopping_params=es_p
 )
 
-exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 
 # exp = load_experimentator(
 #     "./saved_experiments/2021-12-11_16:34:50.pkl")
@@ -148,7 +148,9 @@ from predpy.preprocessing.statistic_anomalies_detection import *
 df = pd.concat(tsm.sequences)
 df = df.resample('1min').fillna("backfill")
 
-get_variance_filter(df, 500, (-10, -2))
+get_variance_filter(
+    df, window_size=500, log_variance_limits=(-10, -2),
+    target="Global_active_power")
 
 collective_isolation_forest(tsm.sequences[0].iloc[:1500, 0], 500)
 x = 0
