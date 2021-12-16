@@ -170,9 +170,12 @@ class Experimentator:
         """
         ds_params = self.datasets_params.iloc[dataset_idx]
         df = load_and_preprocess(
-            ds_params.path, ds_params.load_params,
-            ds_params.drop_refill_pipeline, ds_params.preprocessing_pipeline,
-            ds_params.scaler,
+            dataset_path=ds_params.path,
+            load_params=ds_params.load_params,
+            drop_refill_pipeline=ds_params.drop_refill_pipeline,
+            preprocessing_pipeline=ds_params.preprocessing_pipeline,
+            detect_anomalies_pipeline=ds_params.detect_anomalies_pipeline,
+            scaler=ds_params.scaler,
             training_proportion=ds_params.split_proportions[0])
 
         sequences = self._split_ts_where_breaks(df, max_break=4)

@@ -13,7 +13,7 @@ from predpy.preprocessing import set_index
 from predpy.preprocessing import moving_average
 from predpy.preprocessing import (
     load_and_preprocess, set_index, moving_average, drop_if_is_in,
-    use_dataframe_func, loc, iloc)
+    use_dataframe_func, loc, iloc, get_isoforest_filter)
 from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
@@ -28,27 +28,7 @@ from prophet import Prophet
 from tsad.anomaly_detector import PredictionAnomalyDetector
 
 
-
-# # First experiment
-# # ================
-
-# datasets_params = [
-#     DatasetParams(
-#         path="../data/Meteorology/daily-min-temperatures.csv",
-#         target="Temp",
-#         split_proportions=[0.8, 0.1, 0.1],
-#         window_size=366,
-#         batch_size=64,
-#         DatasetCls=SingleTimeSeriesDataset,
-#         pipeline=[
-#             (set_index, {"column_name": "Date"}),
-#             (scale, {"training_fraction": 0.8, "scaler": MinMaxScaler()}),
-#             (moving_average, {"window_size": 20, "col_names": ["Temp"]})
-#         ])
-# ]
-
-# Second experiment
-# ================
+# =============================================================================
 
 window_size = 366
 
@@ -68,6 +48,12 @@ drop_refill_pipeline = [
 preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
 ]
+detect_anomalies_pipeline = [
+    # (get_isoforest_filter, dict(
+    #     scores_threshold=-0.36, window_size=500, target="Global_active_power"))
+]
+
+
 datasets_params = [
     DatasetParams(
         path="/home/stachu/Projects/Anomaly_detection/Forecasting_models/data/Energy/household_power_consumption/household_power_consumption.csv",
@@ -79,6 +65,7 @@ datasets_params = [
         DatasetCls=MultiTimeSeriesDataset,
         drop_refill_pipeline=drop_refill_pipeline,
         preprocessing_pipeline=preprocessing_pipeline,
+        detect_anomalies_pipeline=detect_anomalies_pipeline,
         scaler=MinMaxScaler()),
 ]
 
@@ -133,18 +120,18 @@ es_p = EarlyStoppingParams(
 
 # tmp = pl.Trainer(logger=TensorBoardLogger("./"))
 
-# exp = Experimentator(
-#     models_params=models_params,
-#     datasets_params=datasets_params,
-#     trainer_params=tr_p,
-#     checkpoint_params=chp_p,
-#     early_stopping_params=es_p
-# )
+exp = Experimentator(
+    models_params=models_params,
+    datasets_params=datasets_params,
+    trainer_params=tr_p,
+    checkpoint_params=chp_p,
+    early_stopping_params=es_p
+)
 
-# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 
-exp = load_experimentator(
-    "./saved_experiments/2021-12-11_16:34:50.pkl")
+# exp = load_experimentator(
+#     "./saved_experiments/2021-12-11_16:34:50.pkl")
 
 # =============================================================================
 
@@ -156,7 +143,13 @@ exp = load_experimentator(
 tsm = exp.load_time_series_module(0)
 
 # =============================================================================
-from predpy.preprocessing.statistic_anomalies_detection import collective_isolation_forest
+from predpy.preprocessing.statistic_anomalies_detection import *
+
+df = pd.concat(tsm.sequences)
+df = df.resample('1min').fillna("backfill")
+
+get_variance_filter(df, 500, (-10, -2))
+
 collective_isolation_forest(tsm.sequences[0].iloc[:1500, 0], 500)
 x = 0
 # =============================================================================

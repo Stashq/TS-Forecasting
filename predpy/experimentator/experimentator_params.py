@@ -26,8 +26,12 @@ class DatasetParams:
     window_size: int
     batch_size: int
     DatasetCls: TimeSeriesDataset
-    drop_refill_pipeline: List[Tuple[Callable, Dict]]
-    preprocessing_pipeline: List[Tuple[Callable, Dict]]
+    drop_refill_pipeline: List[Tuple[Callable, Dict]] =\
+        field(default_factory=list)
+    preprocessing_pipeline: List[Tuple[Callable, Dict]] =\
+        field(default_factory=list)
+    detect_anomalies_pipeline: List[Tuple[Callable, Dict]] =\
+        field(default_factory=list)
     load_params: Dict[str, Any] = field(default_factory=dict)
     scaler: TransformerMixin = None
     true_values: List[float] = None

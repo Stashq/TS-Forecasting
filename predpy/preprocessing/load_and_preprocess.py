@@ -16,13 +16,19 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.base import TransformerMixin
 from sklearn.preprocessing import MinMaxScaler
+from string import Template
+
+
+UNKNOWN_TARTEG_TYPE = Template(
+    "Unknown type of target: $target_type. Allowed: str, list.")
 
 
 def load_and_preprocess(
     dataset_path: str,
     load_params: Dict = {},
-    drop_refill_pipeline: List[Union[Callable, Tuple, List]] = None,
-    preprocessing_pipeline: List[Union[Callable, Tuple, List]] = None,
+    drop_refill_pipeline: List[Union[Callable, Tuple, List]] = [],
+    preprocessing_pipeline: List[Union[Callable, Tuple, List]] = [],
+    detect_anomalies_pipeline: List[Union[Callable, Tuple, List]] = [],
     scaler: TransformerMixin = None,
     training_proportion: float = None,
     verbose: bool = False
@@ -45,11 +51,14 @@ def load_and_preprocess(
         function, just remember to pass it in this order.
         By default None.
 
-    Function use two pipelines:
+    Function use three pipelines:
         * drop_refill_pipeline - functions dropping unwanted data and refilling
         missing values; runs first,
         * preprocessing_pipeline - functions preprocessing cleaned time series;
-        runs second.
+        runs second,
+        * detect_anomalies_pipeline - functions returning fiters for anomalies
+        (normal data <- True, anomaly <- False); pipeline if runned after
+        scaling, create logical sum from filters and apply result on dataframe.
     Remember to pass functions to right pipeline.
 
     If *scaler* and *training_proportion* is defined,
@@ -105,7 +114,48 @@ def load_and_preprocess(
         assert training_proportion is not None,\
             "Training proportion not defined."
         df = scale(df, training_proportion, scaler)
+
+    df = find_anomalies(
+        df=df, detect_anomalies_pipeline=detect_anomalies_pipeline,
+        verbose=verbose)
+
     return df
+
+
+def find_anomalies(
+    df: pd.DataFrame,
+    detect_anomalies_pipeline: List[Union[Callable, Tuple, List]],
+    verbose: bool = False,
+):
+    """This pipeline is runned in different way than others.
+    All functions are executed separetly, not in sequence.
+    At the end dataframe is filtered by logical sum of all filters.
+
+    Functions finds anomalies based on single time series,
+    without including relations of them.
+    """
+    if len(detect_anomalies_pipeline) == 0:
+        return df
+    else:
+        if verbose:
+            iterator = tqdm(enumerate(detect_anomalies_pipeline))
+        else:
+            iterator = iter(enumerate(detect_anomalies_pipeline))
+
+        final_filter = df.apply(lambda x: False, axis=1)
+        for i, step in iterator:
+            func, args, kwargs = _read_pipeline_step(step, i)
+            if verbose:
+                iterator.set_description(
+                    f"Preprocessing step: {func.__name__}")
+            try:
+                filter = func(df, *args, **kwargs)
+                final_filter = final_filter | filter
+            except Exception as e:
+                e.args += (f"Error occured in {i} pipeline step "
+                           f"with function \"{func.__name__}\".",)
+                raise e
+        return df[final_filter]
 
 
 def _read_pipeline_step(
@@ -196,73 +246,6 @@ def _get_func(
     assert callable(step[0]),\
         f"Pipeline first argument of {step_idx} step is not a function."
     return step[0]
-
-
-def _params_for_len_2(
-    step: Tuple,
-    step_idx: int
-) -> Tuple[Tuple, Dict]:
-    """Reads and validate parameters from pipeline element that length
-    is equal 2.\n
-
-    Checks if second argument is tuple or dict. If not, ValueError is raised.
-    If yes, set *args or **kwargs  depending on what is the type of second
-    parameter.
-    One of them is empty, but to keep the convention and, both are returned.
-
-    Parameters
-    ----------
-    step : Union[Callable, Tuple, List]
-        Element of pipeline.
-    step_idx : int
-        Index of step in pipeline.
-
-    Returns
-    -------
-    Tuple[Tuple, Dict]
-        *Args and  *kwargs for preprocessing function.
-    """
-    args, kwargs = (), {}
-    if isinstance(step[1], tuple):
-        args = step[1]
-    elif isinstance(step[1], dict):
-        kwargs = step[1]
-    else:
-        raise ValueError(
-            f"Wrong second argument type of {step_idx} pipeline steps. "
-            f"Expected tuple or dict, got {type(step[1])}.")
-    return args, kwargs
-
-
-def _params_for_len_3(
-    step: Tuple,
-    step_idx: int
-) -> Tuple[Tuple, Dict]:
-    """Reads and validate parameters from pipeline element that length
-    is equal 3.\n
-
-    Checks if second argument is a tuple and third is a dict.
-    If yes, returns them. If not, raises AssertionError.
-
-    Parameters
-    ----------
-    step : Union[Callable, Tuple, List]
-        Element of pipeline.
-    step_idx : int
-        Index of step in pipeline.
-
-    Returns
-    -------
-    Tuple[Tuple, Dict]
-        *Args and  *kwargs for preprocessing function.
-    """
-    assert isinstance(step[1], tuple),\
-        f"Second argument of {step_idx} pipeline step "\
-        "is not a tuple."
-    assert isinstance(step[2], dict),\
-        f"Third argument of {step_idx} pipeline step "\
-        "is not a dictionary."
-    return step
 
 
 def fit_scaler(
