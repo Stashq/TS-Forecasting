@@ -23,4 +23,4 @@ from .experimentator import (
     Experimentator, plot_aggregated_predictions, load_experimentator,
     ExperimentatorPlot)
 from .experimentator_params import (
-    DatasetParams, ModelParams, PredictionRecord)
+    DatasetParams, ModelParams, PredictionRecord, LearningParams)

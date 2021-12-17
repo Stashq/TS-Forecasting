@@ -15,5 +15,4 @@ experiment, this package could be useful. It is also used in
 from .training import (
     get_trained_pl_model, get_trainer)
 from .training_params import (
-    CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams,
-    LearningParams)
+    CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)

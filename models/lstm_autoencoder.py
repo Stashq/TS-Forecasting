@@ -59,7 +59,7 @@ class LSTMAutoencoder(nn.Module):
         self.n_layers = n_layers
         self.h_size = h_size
         self.encoder = Encoder(c_in, h_size, n_layers)
-        self.decoder = Encoder(h_size, c_in, n_layers)
+        self.decoder = Decoder(h_size, c_in, n_layers)
 
     def forward(self, x):
         emb = self.encoder(x)

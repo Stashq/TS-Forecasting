@@ -32,13 +32,12 @@ import os
 from dataclasses import asdict
 import torch
 
-from predpy.wrapper import Predictor
+from predpy.wrapper import Autoencoder
 from predpy.data_module import MultiTimeSeriesModule
 from predpy.preprocessing import load_and_preprocess
 from predpy.trainer import get_trained_pl_model
 from predpy.trainer import (
-    TrainerParams, LoggerParams, EarlyStoppingParams, CheckpointParams,
-    LearningParams)
+    TrainerParams, LoggerParams, EarlyStoppingParams, CheckpointParams)
 
 from .experimentator_params import (
     DatasetParams, ModelParams, PredictionRecord)
@@ -72,9 +71,6 @@ class Experimentator:
         self,
         models_params: List[ModelParams],
         datasets_params: List[DatasetParams],
-        learning_params: LearningParams = LearningParams(),
-        WrapperCls: Type[pl.LightningDataModule] = Predictor,
-        wrapper_kwargs: Dict = {},
         trainer_params: TrainerParams = TrainerParams(),
         checkpoint_params: CheckpointParams = CheckpointParams(),
         early_stopping_params: EarlyStoppingParams = EarlyStoppingParams(),
@@ -106,11 +102,6 @@ class Experimentator:
             by default EarlyStoppingParams().
         """
         self.set_experiment_params(models_params, datasets_params)
-
-        # Wrapper params
-        self.WrapperCls = WrapperCls
-        self.learning_params = learning_params
-        self.wrapper_kwargs = wrapper_kwargs
 
         # Trainer params
         self.trainer_params = trainer_params
@@ -254,15 +245,12 @@ class Experimentator:
 
     def create_lightning_module(
         self,
-        model: Union[torch.nn.Module, int] = None,
-        learning_params: Dict = {}
+        model_params: Union[torch.nn.Module, int] = None
     ) -> pl.LightningModule:
-        if isinstance(model, int):
-            m_params = self.models_params.iloc[model]
-            model = m_params.cls_(**m_params.init_params)
-        pl_model = self.WrapperCls(
-            model=model, **asdict(learning_params),
-            **self.wrapper_kwargs)
+        pl_model = model_params.WrapperCls(
+            model=model_params.cls_(**model_params.init_params),
+            **model_params.learning_params,
+            **model_params.wrapper_kwargs)
         return pl_model
 
     def load_pl_model(
@@ -273,7 +261,7 @@ class Experimentator:
         find_last: bool = True
     ):
         pl_model = self.create_lightning_module(
-            model=model_idx, learning_params=self.learning_params)
+            model_params=self.models_params.iloc[model_idx])
 
         if file_name is None:
             file_name = self.exp_date
@@ -281,10 +269,11 @@ class Experimentator:
             dir_path = self.datasets_params["path"]
         if find_last:
             file_name = self._find_last_model(dir_path, file_name)
+
+        loaded_data = torch.load(
+            os.path.join(dir_path, file_name + ".ckpt"))
         pl_model.load_state_dict(
-            torch.load(
-                os.path.join(dir_path, file_name + ".ckpt")
-            )["state_dict"])
+            loaded_data["state_dict"])
         return pl_model
 
     def _find_last_model(
@@ -825,10 +814,12 @@ class Experimentator:
         checkpoint_params.dirpath =\
             os.path.join(chp_dirpath, tsm.name_, m_params.name_)
 
-        pl_model = self.WrapperCls(
+        if m_params.WrapperCls == Autoencoder:
+            m_params.wrapper_kwargs["target_cols_ids"] = tsm.target_cols_ids()
+        pl_model = m_params.WrapperCls(
             model=m_params.cls_(**m_params.init_params),
-            **asdict(self.learning_params),
-            **self.wrapper_kwargs)
+            **m_params.learning_params,
+            **m_params.wrapper_kwargs)
 
         # training model
         pl_model = get_trained_pl_model(
@@ -900,9 +891,6 @@ class Experimentator:
                     {
                         "models_params": self.models_params,
                         "datasets_params": self.datasets_params,
-                        "learning_params": self.learning_params,
-                        "WrapperCls": self.WrapperCls,
-                        "wrapper_kwargs": self.wrapper_kwargs,
                         "trainer_params": self.trainer_params,
                         "checkpoint_params": self.checkpoint_params,
                         "early_stopping_params": self.early_stopping_params,
@@ -940,9 +928,6 @@ def load_experimentator(path: str) -> Experimentator:
         exp = Experimentator(
             models_params=attrs["models_params"],
             datasets_params=attrs["datasets_params"],
-            learning_params=attrs["learning_params"],
-            WrapperCls=attrs["WrapperCls"],
-            wrapper_kwargs=attrs["wrapper_kwargs"],
             trainer_params=attrs["trainer_params"],
             checkpoint_params=attrs["checkpoint_params"],
             early_stopping_params=attrs["early_stopping_params"],

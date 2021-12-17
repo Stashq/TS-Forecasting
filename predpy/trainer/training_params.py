@@ -3,9 +3,8 @@
 Contains init parameters for lightning trainer, early stopping and checkpoint
 callbacks, logger and learning parameters for lightning model optimizer.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Union, Optional, List, Iterable
-from torch import nn, optim
 
 # from pytorch_lightning.accelerators import Accelerator
 # from pytorch_lightning.plugins.training_type import TrainingTypePlugin
@@ -72,11 +71,3 @@ class LoggerParams:
     save_dir: str = "./"
     name: str = 'default'
     version: str = None
-
-
-@dataclass
-class LearningParams:
-    lr: float = 1e-4
-    criterion: nn.Module = nn.MSELoss()
-    OptimizerClass: optim.Optimizer = optim.Adam
-    optimizer_kwargs: Dict = field(default_factory=dict)

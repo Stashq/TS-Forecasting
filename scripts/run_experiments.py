@@ -104,9 +104,9 @@ models_params = [
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 2}),
     ModelParams(
-        name_="LSTM_h400_l4", cls_=RNN.LSTM,
+        name_="LSTM_h200_l1", cls_=RNN.LSTM,
         init_params={
-            "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 4}),
+            "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
     # ModelParams(
     #     name_="LSTMAutoencoder_h400_l1", cls_=LSTMAutoencoder,
     #     init_params=dict(
@@ -115,7 +115,7 @@ models_params = [
 ]
 
 chp_p = CheckpointParams(
-    dirpath="./checkpoints", monitor='val_loss', verbose=True,
+    dirpath="../checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
     max_epochs=1, gpus=1, auto_lr_find=True)
@@ -134,108 +134,7 @@ exp = Experimentator(
     checkpoint_params=chp_p,
     early_stopping_params=es_p,
     LoggersClasses=[TensorBoardLogger],
-    loggers_params=[LoggerParams(save_dir="./lightning_logs")]
+    loggers_params=[LoggerParams(save_dir="../lightning_logs")]
 )
 
-exp.run_experiments(experiments_path="./saved_experiments", safe=False)
-
-# LSTM
-# exp = load_experimentator(
-#     "./saved_experiments/2021-12-16_17:19:21.pkl")
-
-# LSTMAutoencoder
-# exp = load_experimentator(
-#     "./saved_experiments/2021-12-17_21:43:48.pkl")
-
-# =============================================================================
-
-# exp.plot_preprocessed_dataset(0, True)
-# x = 0
-
-# =============================================================================
-
-tsm = exp.load_time_series_module(0)
-
-# exp.plot_preprocessed_dataset(0, rescale=True, file_path="new_preprocessed.html")
-
-# =============================================================================
-# from predpy.preprocessing.statistic_anomalies_detection import *
-
-# df = pd.concat(tsm.sequences)
-# df = df.resample('1min').fillna("backfill")
-
-# get_variance_filter(
-#     df, window_size=500, log_variance_limits=(-10, -2),
-#     target="Global_active_power")
-
-# collective_isolation_forest(tsm.sequences[0].iloc[:1500, 0], 500)
-# x = 0
-# =============================================================================
-
-# Prophet testing
-# prophet = Prophet()
-# df = pd.concat(tsm.sequences)[["Global_active_power"]]
-# df = df.reset_index().rename(
-#     columns={"datetime": "ds", "Global_active_power": "y"})
-# prophet.fit(df)
-
-
-# with open("./prophet.pkl", "rb") as file:
-#     prophet = pickle.load(file)
-# tmp = prophet.make_future_dataframe(periods=10)
-# tmp = prophet.predict(tmp)
-
-# =============================================================================
-
-# from sklearn.ensemble import IsolationForest
-
-# df = pd.concat(tsm.sequences)[["Global_active_power"]]
-# gap = (df['Global_active_power'].values.reshape(-1,1))
-# model_isoforest = IsolationForest()
-# model_isoforest.fit(gap)
-# scores = model_isoforest.score_samples(gap)
-# df['anomaly_scores'] = model_isoforest.score_samples(gap)
-# df['anomaly_classification'] = model_isoforest.predict(
-#     df['Global_active_power'].values.reshape(-1,1))
-# x = 0
-
-# =============================================================================
-
-normal_dfs = tsm.get_data_from_range(start=-1000, end=-500, copy=True)
-anomaly_dfs = tsm.get_data_from_range(start=-500, copy=True)
-
-apply_noise_on_dataframes(
-    anomaly_dfs, make_noise=white_noise, negativity="abs", loc=0, scale=0.35)
-
-# model = exp.load_pl_model(
-#     model_idx=1,
-#     dir_path="./checkpoints/household_power_consumption/LSTMAutoencoder_h400_l2"
-# ).model
-
-# ad = ReconstructionAnomalyDetector(
-#     model, target_cols_ids=tsm.target_cols_ids())
-
-model = exp.load_pl_model(
-    model_idx=0,
-    dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1"
-).model
-
-ad = PredictionAnomalyDetector(
-    model, target_cols_ids=tsm.target_cols_ids())
-
-ad.fit(
-    train_data=DataLoader(
-        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
-        batch_size=tsm.batch_size),
-    anomaly_data=DataLoader(
-        MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
-        batch_size=tsm.batch_size),
-    normal_data=DataLoader(
-        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
-        batch_size=tsm.batch_size),
-    class_weight=None, verbose=True, plot_time_series=True
-)
-
-# ad.find_anomalies(tsm.test_dataloader())
-
-x = 0
+exp.run_experiments(experiments_path="../saved_experiments", safe=False)

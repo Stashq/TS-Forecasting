@@ -105,9 +105,9 @@ class AnomalyDetector:
             normal_data, verbose, return_predictions=True)
         a_res, a_preds = self._any_forward(
             anomaly_data, verbose, return_predictions=True)
-        cdf = np.concatenate([
-            self.distributor.cdf(n_res),
-            self.distributor.cdf(a_res)])
+        cdf = np.concatenate(
+            [self.distributor.cdf(n_res), self.distributor.cdf(a_res)],
+            axis=0)
         classes = [0]*len(n_res) + [1]*len(a_res)
         self.thresholder = LogisticRegression(
             class_weight=class_weight

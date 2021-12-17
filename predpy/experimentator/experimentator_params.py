@@ -6,11 +6,15 @@ single experiment step (predictions made with one model on one dataset test
 part).
 """
 from dataclasses import dataclass, field
-from predpy.dataset import TimeSeriesDataset
-from typing import List, Dict, Tuple, Callable, Any
+from typing import List, Dict, Tuple, Callable, Any, Type
 from sklearn.base import TransformerMixin
 import pandas as pd
 import torch
+from torch import nn, optim
+
+from predpy.dataset import TimeSeriesDataset
+from predpy.wrapper import TSModelWrapper, Predictor
+from predpy.dataset import MultiTimeSeriesDataset
 
 
 @dataclass
@@ -25,7 +29,7 @@ class DatasetParams:
     split_proportions: List[float]
     window_size: int
     batch_size: int
-    DatasetCls: TimeSeriesDataset
+    DatasetCls: TimeSeriesDataset = None
     drop_refill_pipeline: List[Tuple[Callable, Dict]] =\
         field(default_factory=list)
     preprocessing_pipeline: List[Tuple[Callable, Dict]] =\
@@ -37,6 +41,18 @@ class DatasetParams:
     true_values: List[float] = None
     name_: str = None
 
+    def __post_init__(self):
+        if self.DatasetCls is None:
+            self.DatasetCls = MultiTimeSeriesDataset
+
+
+@dataclass
+class LearningParams:
+    lr: float = 1e-4
+    criterion: nn.Module = nn.MSELoss()
+    OptimizerClass: optim.Optimizer = optim.Adam
+    optimizer_kwargs: Dict = field(default_factory=dict)
+
 
 @dataclass
 class ModelParams:
@@ -46,6 +62,13 @@ class ModelParams:
     name_: str
     cls_: torch.nn.Module
     init_params: Dict
+    WrapperCls: Type[TSModelWrapper] = None
+    wrapper_kwargs: Dict[str, Any] = field(default_factory=dict)
+    learning_params: LearningParams = field(default_factory=LearningParams)
+
+    def __post_init__(self):
+        if self.WrapperCls is None:
+            self.WrapperCls = Predictor
 
 
 @dataclass

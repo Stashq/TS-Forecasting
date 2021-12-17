@@ -478,3 +478,9 @@ class MultiTimeSeriesModule(LightningDataModule):
         if copy:
             result = [seqs.copy() for seqs in result]
         return result
+
+    def target_cols_ids(self) -> List[int]:
+        return [
+            self.sequences[0].columns.get_loc(t)
+            for t in self.target
+        ]

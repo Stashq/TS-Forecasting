@@ -21,9 +21,9 @@ class GaussianDistributor(Distributor):
         # self._mvnormal = None
 
     def fit(self, data: np.ndarray):
-        self._n_dims = data.shape[1]
+        self._n_dims = data.shape[-1]
         for dim in range(self._n_dims):
-            mean, var = norm.fit(data[:, dim])
+            mean, var = norm.fit(data[..., dim])
             self._means += [mean]
             self._vars += [var]
         # self._mean = np.mean(data, axis=0)
@@ -35,14 +35,16 @@ class GaussianDistributor(Distributor):
         if len(self._means) == 0 or len(self._vars) == 0:
             raise AttributeError(BEFORE_FIT_ERROR)
         if dim is None:
-            return np.vstack([
+            result = [
                 norm.cdf(
-                    data[:, dim], loc=self._means[dim], scale=self._vars[dim])
+                    data[..., dim], loc=self._means[dim],
+                    scale=self._vars[dim])
                 for dim in range(self._n_dims)
-            ]).T
+            ]
+            return np.concatenate(result, axis=-1)
         else:
             return norm.cdf(
-                data[:, dim], loc=self._means[dim], scale=self._vars[dim])
+                data[..., dim], loc=self._means[dim], scale=self._vars[dim])
         # probs = self._mvnormal.cdf(data)
         # if len(probs.shape) == 1:
         #     probs = np.expand_dims(probs, axis=1)
@@ -56,14 +58,16 @@ class GaussianDistributor(Distributor):
         if self._means is None or self._vars is None:
             raise AttributeError(BEFORE_FIT_ERROR)
         if dim is None:
-            return np.vstack([
+            result = [
                 norm.pdf(
-                    data[:, dim], loc=self._means[dim], scale=self._vars[dim])
+                    data[..., dim], loc=self._means[dim],
+                    scale=self._vars[dim])
                 for dim in range(self._n_dims)
-            ]).T
+            ]
+            return np.concatenate(result, axis=-1)
         else:
             return norm.pdf(
-                data[:, dim], loc=self._means[dim], scale=self._vars[dim])
+                data[..., dim], loc=self._means[dim], scale=self._vars[dim])
         # probs = self._mvnormal.pdf(data)
         # if len(probs.shape) == 1:
         #     probs = np.expand_dims(probs, axis=1)
