@@ -152,22 +152,42 @@ def get_variance_filter(
 ):
     ts = _to_series(ts, target)
     var = ts[::-1].rolling(window=window_size).var()[::-1]
-    lower = np.exp(log_variance_limits[0])
-    upper = np.exp(log_variance_limits[1])
-    anomalies_starts = (var >= lower) & (var <= upper)
-    anomalies_starts[var.isna()] = True
 
-    count_true = anomalies_starts\
-        .rolling(window=2*window_size-1, center=True)\
+    ok_data_fil = None
+    l_fil, u_fil = None, None
+    if log_variance_limits[0] is not None:
+        lower = np.exp(log_variance_limits[0])
+        l_fil = (var >= lower)
+    if log_variance_limits[1] is not None:
+        upper = np.exp(log_variance_limits[1])
+        u_fil = (var <= upper)
+    if l_fil is not None and u_fil is not None:
+        ok_data_fil = l_fil & u_fil
+    elif l_fil is not None:
+        ok_data_fil = l_fil
+    elif u_fil is not None:
+        ok_data_fil = u_fil
+
+    ok_data_fil[var.isna()] = True
+
+    count_true = ok_data_fil\
+        .rolling(window=window_size)\
         .sum()
 
-    # head = anomalies_starts[2*window_size::-1]\
+    # count_true = anomalies_starts\
     #     .rolling(window=2*window_size-1, center=True)\
-    #     .sum()[-window_size]
+    #     .sum()
 
-    count_true[count_true.isna()] = 2*window_size-1
+#     # head = anomalies_starts[2*window_size::-1]\
+#     #     .rolling(window=2*window_size-1, center=True)\
+#     #     .sum()[-window_size]
 
-    result = count_true == 2*window_size-1
+    # count_true[count_true.isna()] = 2*window_size-1
+    result = count_true == window_size
+
+    # for i in range(window_size):
+    #     result[i] = all(anomalies_starts[:i])
+    result[count_true.isna()] = True
 
     return result
 

@@ -150,7 +150,8 @@ class Experimentator:
     def load_time_series_module(
         self,
         dataset_idx: int,
-        setup: bool = True
+        setup: bool = True,
+        verbose: bool = False
     ) -> MultiTimeSeriesModule:
         """Create time series module.
 
@@ -169,16 +170,29 @@ class Experimentator:
             Data module created based on provided parameters.
         """
         ds_params = self.datasets_params.iloc[dataset_idx]
+        max_consecutive_nans = 5
         df = load_and_preprocess(
             dataset_path=ds_params.path,
             load_params=ds_params.load_params,
-            drop_refill_pipeline=ds_params.drop_refill_pipeline,
+            drop_pipeline=ds_params.drop_refill_pipeline,
+            resample_params=dict(
+                resampler_method_str="fillna", rule="1min", resample_kwargs={},
+                resampler_method_kwargs=dict(method="backfill")),
             preprocessing_pipeline=ds_params.preprocessing_pipeline,
             detect_anomalies_pipeline=ds_params.detect_anomalies_pipeline,
+            undo_resample_before_interpolation=True,
+            interpolate_params=dict(method="akima"),
+            nan_window_size=300,
+            max_nan_in_window=50,
+            max_consecutive_nans=max_consecutive_nans,
             scaler=ds_params.scaler,
-            training_proportion=ds_params.split_proportions[0])
+            training_proportion=ds_params.split_proportions[0],
+            verbose=verbose)
 
-        sequences = self._split_ts_where_breaks(df, max_break=4)
+        max_break =\
+            df.index.to_series().diff().mode()[0] * max_consecutive_nans
+        sequences = self._split_ts_where_breaks(
+            df, max_break=max_break)
         sequences = self._filter_too_short_series(
             sequences, ds_params.window_size)
         tsm = MultiTimeSeriesModule(

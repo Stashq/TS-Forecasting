@@ -13,6 +13,7 @@ just remember to pass it in this order.
 """
 from typing import Callable, Dict, List, Tuple, Union
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 from sklearn.base import TransformerMixin
 from sklearn.preprocessing import MinMaxScaler
@@ -26,9 +27,15 @@ UNKNOWN_TARTEG_TYPE = Template(
 def load_and_preprocess(
     dataset_path: str,
     load_params: Dict = {},
-    drop_refill_pipeline: List[Union[Callable, Tuple, List]] = [],
+    drop_pipeline: List[Union[Callable, Tuple, List]] = [],
+    resample_params: Dict = None,
     preprocessing_pipeline: List[Union[Callable, Tuple, List]] = [],
     detect_anomalies_pipeline: List[Union[Callable, Tuple, List]] = [],
+    undo_resample_before_interpolation: bool = False,
+    interpolate_params: Dict = None,
+    nan_window_size: int = None,
+    max_nan_in_window: int = None,
+    max_consecutive_nans: int = None,
     scaler: TransformerMixin = None,
     training_proportion: float = None,
     verbose: bool = False
@@ -65,6 +72,9 @@ def load_and_preprocess(
     at the end of preprocessing scales result time series
     and returns it with preprocessed data.
 
+    To run preprocessing faster,
+    keep nan_window_size and max_consecutive_nans low.
+
     Parameters
     ----------
     dataset_path : str
@@ -92,12 +102,62 @@ def load_and_preprocess(
     """
     df = pd.read_csv(dataset_path, **load_params)
 
-    pipeline = drop_refill_pipeline + preprocessing_pipeline
+    df = run_pipeline(df, drop_pipeline, verbose)
+    if resample_params is not None:
+        old_ids = df.index
+        df = resample(df, **resample_params)
+    df = run_pipeline(df, preprocessing_pipeline, verbose)
+
+    if scaler is not None:
+        assert training_proportion is not None,\
+            "Training proportion not defined."
+        df = scale(df, training_proportion, scaler)
+
+    df = nan_anomalies(
+        df=df, detect_anomalies_pipeline=detect_anomalies_pipeline,
+        verbose=verbose)
+
+    if undo_resample_before_interpolation and resample_params is not None:
+        # nan_ids = old_ids.intersection(df.index)
+        # df = df.drop(nan_ids)
+        df.loc[df.index.difference(old_ids)] = np.nan
+
+    if nan_window_size is not None and max_nan_in_window is not None:
+        df = drop_where_to_many_nans(df, nan_window_size, max_nan_in_window)
+
+    if max_consecutive_nans is not None:
+        df = drop_consecutive_nans(
+            df, min_len=max_consecutive_nans+1)
+
+    if interpolate_params is not None:
+        df = df.interpolate(**interpolate_params)
+
+    return df
+
+
+def resample(
+    df: pd.DataFrame,
+    resampler_method_str: str,
+    rule: str = None,
+    resample_kwargs: Dict = {},
+    resampler_method_kwargs: Dict = {}
+):
+    if rule is None:
+        rule = df.index.to_series().diff().mode()[0]
+    resampler = df.resample(rule, **resample_kwargs)
+    resampler_method = getattr(resampler, resampler_method_str)
+    return resampler_method(**resampler_method_kwargs)
+
+
+def run_pipeline(
+    df: pd.DataFrame,
+    pipeline: List[Union[Callable, Tuple, List]] = [],
+    verbose: bool = False
+):
     if verbose:
         iterator = tqdm(enumerate(pipeline))
     else:
         iterator = iter(enumerate(pipeline))
-
     for i, step in iterator:
         func, args, kwargs = _read_pipeline_step(step, i)
         if verbose:
@@ -109,20 +169,41 @@ def load_and_preprocess(
             e.args += (f"Error occured in {i} pipeline step "
                        f"with function \"{func.__name__}\".",)
             raise e
-
-    if scaler is not None:
-        assert training_proportion is not None,\
-            "Training proportion not defined."
-        df = scale(df, training_proportion, scaler)
-
-    df = find_anomalies(
-        df=df, detect_anomalies_pipeline=detect_anomalies_pipeline,
-        verbose=verbose)
-
     return df
 
 
-def find_anomalies(
+def drop_where_to_many_nans(
+    df: pd.DataFrame,
+    nan_window_size: int,
+    max_nan_in_window: int
+):
+    count_nans = df.isnull().any(axis=1).rolling(window=nan_window_size).sum()
+    res = count_nans > max_nan_in_window
+
+    res = count_nans[::-1].rolling(window=nan_window_size).sum()[::-1]
+    res = res > 0
+    for i in range(nan_window_size):
+        res[-i] = any(count_nans[-i:])
+
+    return df[~res]
+
+
+def drop_consecutive_nans(
+    df: pd.DataFrame,
+    min_len: int
+):
+    count_nans = df.isnull().any(axis=1).rolling(window=min_len).sum()
+    count_nans = count_nans == min_len
+
+    res = count_nans[::-1].rolling(window=min_len).sum()[::-1]
+    res = res > 0
+    for i in range(min_len):
+        res[-i] = any(count_nans[-i:])
+
+    return df[~res]
+
+
+def nan_anomalies(
     df: pd.DataFrame,
     detect_anomalies_pipeline: List[Union[Callable, Tuple, List]],
     verbose: bool = False,
@@ -134,15 +215,13 @@ def find_anomalies(
     Functions finds anomalies based on single time series,
     without including relations of them.
     """
-    if len(detect_anomalies_pipeline) == 0:
-        return df
-    else:
+    if len(detect_anomalies_pipeline) != 0:
         if verbose:
             iterator = tqdm(enumerate(detect_anomalies_pipeline))
         else:
             iterator = iter(enumerate(detect_anomalies_pipeline))
 
-        final_filter = df.apply(lambda x: False, axis=1)
+        final_filter = None  # pd.Series([False]*df.shape[0])
         for i, step in iterator:
             func, args, kwargs = _read_pipeline_step(step, i)
             if verbose:
@@ -150,12 +229,17 @@ def find_anomalies(
                     f"Preprocessing step: {func.__name__}")
             try:
                 filter = func(df, *args, **kwargs)
-                final_filter = final_filter | filter
+                if final_filter is None:
+                    final_filter = filter
+                else:
+                    final_filter = final_filter | filter
             except Exception as e:
                 e.args += (f"Error occured in {i} pipeline step "
                            f"with function \"{func.__name__}\".",)
                 raise e
-        return df[final_filter]
+        df[~final_filter] = np.nan
+
+    return df
 
 
 def _read_pipeline_step(

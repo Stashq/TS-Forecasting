@@ -13,7 +13,7 @@ from predpy.preprocessing import set_index
 from predpy.preprocessing import moving_average
 from predpy.preprocessing import (
     load_and_preprocess, set_index, moving_average, drop_if_is_in,
-    use_dataframe_func, loc, iloc, get_isoforest_filter)
+    use_dataframe_func, loc, iloc, get_isoforest_filter, get_variance_filter)
 from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
@@ -26,6 +26,8 @@ import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 from prophet import Prophet
 from tsad.anomaly_detector import PredictionAnomalyDetector
+from models import LSTMAutoencoder
+from predpy.wrapper import Autoencoder
 
 
 # =============================================================================
@@ -42,7 +44,7 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    # (iloc, {"rows_end": 1500}),
+    (iloc, {"rows_end": 1500}),
     # (iloc, {"rows_start": -20000}),
 ]
 preprocessing_pipeline = [
@@ -51,6 +53,9 @@ preprocessing_pipeline = [
 detect_anomalies_pipeline = [
     # (get_isoforest_filter, dict(
     #     scores_threshold=-0.36, window_size=500, target="Global_active_power"))
+    (get_variance_filter, dict(
+        window_size=5000, log_variance_limits=(-7, 0),
+        target="Global_active_power"))
 ]
 
 
@@ -91,10 +96,10 @@ models_params = [
     # ModelParams(
     #     name_="ResNet", cls_=ResNet.ResNet,
     #     init_params={"c_in": c_in, "c_out": c_out}),
-    ModelParams(
-        name_="LSTM_h200_l1", cls_=RNN.LSTM,
-        init_params={
-            "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
+    # ModelParams(
+    #     name_="LSTM_h200_l1", cls_=RNN.LSTM,
+    #     init_params={
+    #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
     # ModelParams(
     #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
     #     init_params={
@@ -103,6 +108,11 @@ models_params = [
     #     name_="LSTM_h400_l1", cls_=RNN.LSTM,
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 1}),
+
+    ModelParams(
+        name_="LSTMAutoencoder_h400_l2", cls_=LSTMAutoencoder,
+        init_params=dict(
+            c_in=window_size, h_size=400, n_layers=1))
 ]
 from pytorch_lightning.loggers import TensorBoardLogger
 
@@ -125,13 +135,14 @@ exp = Experimentator(
     datasets_params=datasets_params,
     trainer_params=tr_p,
     checkpoint_params=chp_p,
-    early_stopping_params=es_p
+    early_stopping_params=es_p,
+    WrapperCls=Autoencoder
 )
 
-# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 
 # exp = load_experimentator(
-#     "./saved_experiments/2021-12-11_16:34:50.pkl")
+#     "./saved_experiments/2021-12-16_17:19:21.pkl")
 
 # =============================================================================
 
@@ -141,6 +152,8 @@ exp = Experimentator(
 # =============================================================================
 
 tsm = exp.load_time_series_module(0)
+
+# exp.plot_preprocessed_dataset(0, rescale=True, file_path="new_preprocessed.html")
 
 # =============================================================================
 from predpy.preprocessing.statistic_anomalies_detection import *
