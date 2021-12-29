@@ -10,6 +10,7 @@ dictionary with model input sequence named "sequence" and following after
 it target value named "label". Compatibile with :py:mod:`dataset`.
 """
 # flake8:noqa
+from .base import TSModelWrapper
 from .predictor import Predictor
 from .autoencoder import Autoencoder
-from .base import TSModelWrapper
+from .vae import VAE

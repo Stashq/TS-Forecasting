@@ -4,14 +4,14 @@ To work properly, dataset module __getitem__ method should return
 dictionary with model input sequence named "sequence" and following after
 it target value named "label". Compatibile with :py:mod:`dataset`.
 """
+import pandas as pd
 from pytorch_lightning import LightningModule
-import torch
 from torch import nn, optim
 from typing import Dict
-from torch.utils.data import DataLoader
-from sklearn.base import TransformerMixin
-from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
+from sklearn.base import TransformerMixin
+from torch.utils.data import DataLoader
+import torch
 
 
 class TSModelWrapper(LightningModule, ABC):
@@ -81,20 +81,12 @@ class TSModelWrapper(LightningModule, ABC):
 
     def predict(self, sequence):
         with torch.no_grad():
-            return self(sequence).tolist()
+            return self(sequence)
 
+    @abstractmethod
     def get_dataset_predictions(
         self,
         dataloader: DataLoader,
         scaler: TransformerMixin = None
-    ):
-        self.eval()
-        preds = []
-
-        for batch in tqdm(dataloader, desc="Making predictions"):
-            preds += self.predict(self.get_Xy(batch)[0])
-
-        if scaler is not None:
-            preds = scaler.inverse_transform([preds]).tolist()
-
-        return preds
+    ) -> pd.DataFrame:
+        pass

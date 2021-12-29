@@ -32,7 +32,7 @@ import os
 from dataclasses import asdict
 import torch
 
-from predpy.wrapper import Autoencoder
+from predpy.wrapper import Autoencoder, VAE, TSModelWrapper
 from predpy.data_module import MultiTimeSeriesModule
 from predpy.preprocessing import load_and_preprocess
 from predpy.trainer import get_trained_pl_model
@@ -109,6 +109,7 @@ class Experimentator:
         self.early_stopping_params = early_stopping_params
         self.loggers_params = loggers_params
         self.LoggersClasses = LoggersClasses
+        self.last_step_end = (-1, -1)
 
         # Experiment variables init
         self.predictions = None
@@ -258,7 +259,9 @@ class Experimentator:
         model_idx: int,
         dir_path: str,
         file_name: str = None,
-        find_last: bool = True
+        find_last: bool = True,
+        create_if_not_found: bool = False,
+        get_epoch: bool = False
     ):
         pl_model = self.create_lightning_module(
             model_params=self.models_params.iloc[model_idx])
@@ -270,10 +273,19 @@ class Experimentator:
         if find_last:
             file_name = self._find_last_model(dir_path, file_name)
 
-        loaded_data = torch.load(
-            os.path.join(dir_path, file_name + ".ckpt"))
-        pl_model.load_state_dict(
-            loaded_data["state_dict"])
+        epoch = None
+        try:
+            loaded_data = torch.load(
+                os.path.join(dir_path, file_name + ".ckpt"))
+            pl_model.load_state_dict(
+                loaded_data["state_dict"])
+            if get_epoch:
+                epoch = loaded_data["epoch"]
+        except FileNotFoundError as e:
+            if not create_if_not_found:
+                raise e
+        if get_epoch:
+            return pl_model, epoch
         return pl_model
 
     def _find_last_model(
@@ -299,25 +311,67 @@ class Experimentator:
 
         return last_model_file
 
+
+
+    def _ae_preds_to_pd(self, preds: List[torch.Tensor], ids: pd.Index):
+        pass
+
+    def _get_same_preds(
+        self,
+        preds: List[torch.Tensor],
+        idx: int,
+        window_size: int
+    ):
+        res = []
+        for i in range(window_size):
+            if i > idx:
+                break
+            res += preds[idx-i][i]
+
+        return res
+
+    def _preds_to_quantiles(self, preds: List[torch.Tensor]):
+        # TODO: quants for more than 1 column
+        quants = []
+        for i in range(len(preds)):
+            preds[i]
+        
+        return quants
+
+
+
+
     def _experiment_step(
         self,
         tsm: MultiTimeSeriesModule,
-        model_idx: int
+        model_idx: int,
+        continue_run: bool = False
     ):
-        pl_model = self.train_model(model_idx=model_idx, tsm=tsm)
+        pl_model = self.train_model(
+            model_idx=model_idx, tsm=tsm, load_state=continue_run)
 
         # collect predictions made on test dataset
         preds = pl_model.get_dataset_predictions(tsm.test_dataloader())
-        labels = tsm.test_dataloader().dataset.get_labels()
+        return preds
+        # labels = tsm.test_dataloader().dataset.get_labels()
 
-        if isinstance(labels, pd.DataFrame):
-            columns = labels.columns
-        else:
-            columns = [labels.name]
+        # if isinstance(labels, pd.DataFrame):
+        #     columns = labels.columns
+        # else:
+        #     columns = [labels.name]
 
-        return pd.DataFrame(
-            data=preds, columns=columns, index=labels.index
-        )
+        # if isinstance(pl_model, Autoencoder) or isinstance(pl_model, VAE):
+        #     quants = self._get_preds_quantiles(preds)
+
+        #     columns = ...  # TODO: columns to col quantiles names
+        #     df = pd.DataFrame(
+        #         data=quants, columns=columns
+        #     ).set_index("datetime", drop=True)
+        # else:
+        #     df = pd.DataFrame(
+        #         data=preds, columns=columns
+        #     ).set_index("datetime", drop=True)
+        # return df
 
     def _deliver_exception(self, msg: str, exception: Exception, safe: bool):
         if safe:
@@ -355,10 +409,18 @@ class Experimentator:
             tsm.test_dataloader().dataset.get_labels()
         return tsm
 
+    def _if_dataset_experiment_finished(
+        self, dataset_idx: int
+    ):
+        return (dataset_idx < self.last_step_end[0] or
+                (dataset_idx == self.last_step_end[0] and
+                self.last_step_end[0] < self.models_params.shape[0]-1))
+
     def run_experiments(
         self,
         skip_steps: List[Tuple[int, int]] = [],
         experiments_path: str = None,
+        continue_run: bool = False,
         safe: bool = True
     ) -> Experimentator:
         """Executes experiment.
@@ -385,15 +447,22 @@ class Experimentator:
         Experimentator
             Executed experiment.
         """
-        # setting experiment date
-        self.exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
-        self.checkpoint_params.filename = self.exp_date
 
-        # init variables
-        predictions = []
+        if continue_run is False:
+            self.last_step_end = (-1, -1)
+            self.exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
+            # save initial settings in file
+            if experiments_path is not None:
+                self.predictions = pd.DataFrame(
+                    [], columns=["dataset_id", "model_id", "predictions"])
+                self.save(experiments_path, safe=False)
+        self.checkpoint_params.filename = self.exp_date
 
         # run experiment
         for dataset_idx in self.datasets_params.index:
+            if continue_run and\
+                    self._if_dataset_experiment_finished(dataset_idx):
+                continue
 
             # data setup and true values saving
             try:
@@ -409,14 +478,28 @@ class Experimentator:
                     continue
 
                 try:
+                    if continue_run and\
+                            model_idx < self.last_step_end[1]:
+                        continue
+
                     model_preds_df = self._experiment_step(
-                        tsm=tsm, model_idx=model_idx)
-                    predictions.append(
-                        PredictionRecord(
-                            dataset_id=dataset_idx,
-                            model_id=model_idx,
-                            predictions=model_preds_df
-                        ))
+                        tsm=tsm, model_idx=model_idx,
+                        continue_run=continue_run)
+
+                    # saving store predictions as dataframe
+                    self.predictions = pd.concat([
+                        self.predictions,
+                        pd.DataFrame(
+                            [PredictionRecord(
+                                dataset_id=dataset_idx,
+                                model_id=model_idx,
+                                predictions=model_preds_df)]
+                        )])
+                    self.last_step_end = (dataset_idx, model_idx)
+
+                    # override experiments run file
+                    if experiments_path is not None:
+                        self.save(experiments_path, safe=True)
                 except Exception as e:
                     self._deliver_exception(
                         msg=self._set_err_msg(dataset_idx, model_idx),
@@ -424,16 +507,6 @@ class Experimentator:
                         safe=safe,
                     )
                     continue
-
-        # saving store predictions as dataframe
-        self.predictions = pd.DataFrame(predictions)
-
-        # saving experiments run to file
-        if len(predictions) == 0:
-            print("\n\n==== Warning ====\nNo predictions were made\n\n")
-        elif experiments_path is not None:
-            self.save(experiments_path, safe=True)
-
         return self
 
     def get_targets_scaler(
@@ -453,7 +526,6 @@ class Experimentator:
     ) -> pd.DataFrame:
         self._check_if_has_predictions()
 
-        df = None
         if models_ids is None:
             df = self.predictions.loc[
                 self.predictions["dataset_id"] == dataset_idx
@@ -500,22 +572,54 @@ class Experimentator:
         self,
         ts: Union[pd.Series, pd.DataFrame],
         name: str,
-        version: str = ""
+        version: str = "",
+        is_autoencoder: bool = False
     ) -> List[go.Scatter]:
-        data = []
         if isinstance(ts, pd.Series):
-            data += [go.Scatter(
+            data = [go.Scatter(
                 x=ts.index, y=ts, connectgaps=False,
                 name=name + version)]
+        elif isinstance(ts, pd.DataFrame) and is_autoencoder:
+            columns = set([col[:-5] for col in ts.columns])
+            rgb = np.random.randint(256, size=3)
+            data = [
+                go.Scatter(
+                    x=ts.index.tolist() + ts.index.tolist(),
+                    y=pd.concat([ts[col + "_q100"], ts[col + "_q000"]]),
+                    fill='toself',
+                    fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.2)',
+                    line=dict(color='rgba(255, 255, 255, 0)'),
+                    hoverinfo="skip",
+                    showlegend=False)
+                for col in columns]
+            data += [
+                go.Scatter(
+                    x=ts.index.tolist() + ts.index.tolist(),
+                    y=pd.concat([ts[col + "_q075"], ts[col + "_q025"]]),
+                    fill='toself',
+                    fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
+                    line=dict(color='rgba(255, 255, 255, 0)'),
+                    hoverinfo="skip",
+                    showlegend=False)
+                for col in columns]
+            data += [
+                go.Scatter(
+                    x=ts.index, y=ts[col + "_q050"], connectgaps=False,
+                    name=name + f"-{col}" + version,
+                    line=dict(
+                        color=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 1.0)'))
+                for col in columns
+            ]
         elif isinstance(ts, pd.DataFrame):
             if len(ts.columns) > 1:
-                data += [go.Scatter(
+                data = [
+                    go.Scatter(
                         x=ts.index, y=ts[col], connectgaps=False,
                         name=name + f"-{col}" + version)
                     for col in ts.columns
                 ]
             else:
-                data += [go.Scatter(
+                data = [go.Scatter(
                     x=ts.index, y=ts.iloc[:, 0], connectgaps=False,
                     name=name + version)]
         return data
@@ -531,10 +635,14 @@ class Experimentator:
 
         data = self.ts_to_plotly_data(true_vals, "true_values", version)
         for _, row in predictions_df.iterrows():
-            model_name = self.models_params.iloc[row["model_id"]].name_
             preds = self._split_ts_where_breaks(row["predictions"])
             preds = self._concat_dfs_with_gaps(preds)
-            data += self.ts_to_plotly_data(preds, model_name, version)
+
+            model_params = self.models_params.iloc[row["model_id"]]
+            model_name = model_params.name_
+            is_autoencoder = issubclass(model_params.WrapperCls, Autoencoder)
+            data += self.ts_to_plotly_data(
+                preds, model_name, version, is_autoencoder=is_autoencoder)
         return data
 
     def plot_preprocessed_dataset(
@@ -758,8 +866,9 @@ class Experimentator:
         self,
         model_idx: int,
         dataset_idx: int = None,
-        tsm: MultiTimeSeriesModule = None
-    ) -> pl.LightningModule:
+        tsm: MultiTimeSeriesModule = None,
+        load_state: bool = False
+    ) -> TSModelWrapper:
         """Train single model on single dataset from experimentator data.
 
         Parameters
@@ -783,8 +892,8 @@ class Experimentator:
 
         Returns
         -------
-        pl.LightningModule
-            Trained lightning module.
+        TSModelWrapper
+            Trained lightning module wrapping time series model.
         """
         m_params = self.models_params.iloc[model_idx]
 
@@ -814,12 +923,23 @@ class Experimentator:
         checkpoint_params.dirpath =\
             os.path.join(chp_dirpath, tsm.name_, m_params.name_)
 
-        if m_params.WrapperCls == Autoencoder:
+        if m_params.WrapperCls == Autoencoder or m_params.WrapperCls == VAE:
             m_params.wrapper_kwargs["target_cols_ids"] = tsm.target_cols_ids()
-        pl_model = m_params.WrapperCls(
-            model=m_params.cls_(**m_params.init_params),
-            **m_params.learning_params,
-            **m_params.wrapper_kwargs)
+
+        if load_state:
+            pl_model, epoch = self.load_pl_model(
+                model_idx=model_idx,
+                dir_path=checkpoint_params.dirpath,
+                file_name=checkpoint_params.filename,
+                find_last=True,
+                create_if_not_found=True,
+                get_epoch=True)
+            trainer_params.max_epochs = trainer_params.max_epochs - epoch
+        else:
+            pl_model = m_params.WrapperCls(
+                model=m_params.cls_(**m_params.init_params),
+                **m_params.learning_params,
+                **m_params.wrapper_kwargs)
 
         # training model
         pl_model = get_trained_pl_model(
@@ -897,6 +1017,7 @@ class Experimentator:
                         "loggers_params": self.loggers_params,
                         "LoggersClasses": self.LoggersClasses,
                         "predictions": self.predictions,
+                        "last_step_end": self.last_step_end,
                         "exp_date": self.exp_date
                     },
                     file

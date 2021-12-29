@@ -156,7 +156,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             rec_id_in_seq = idx - first_rec_id
         return seq_id, rec_id_in_seq
 
-    def _get_record(self, idx: int) -> pd.Series:
+    def get_record(self, idx: int) -> pd.Series:
         """Transform global record index to sequence index and record index in
         that sequence, then returns record.
 
@@ -208,7 +208,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         Dict[torch.Tensor, torch.Tensor]
             Dict containing sequence and label.
         """
-        seq, label = self._get_record(idx)
+        seq, label = self.get_record(idx)
         return dict(
             sequence=torch.tensor(seq.to_numpy().T).float(),
             label=torch.tensor(label).float()
@@ -293,6 +293,20 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         labels = pd.concat([
             seq[self.target].iloc[self.window_size:] for seq in seqs])
         return labels
+
+    def get_indices_like_recs(self, labels: bool = True):
+        """Return indices of data as they would be records
+        """
+        indices = []
+        if labels:
+            for i in range(self.__len__()):
+                _, lab = self.get_record(i)
+                indices += [lab.name]
+        else:
+            for i in range(self.__len__()):
+                seq, _ = self.get_record(i)
+                indices += [seq.index]
+        return indices
 
     def copy(self):
         return MultiTimeSeriesDataset(

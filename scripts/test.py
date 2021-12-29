@@ -1,11 +1,10 @@
 # flake8: noqa
-
 import sys
 sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
 from predpy.dataset import MultiTimeSeriesDataset
 from predpy.data_module import MultiTimeSeriesModule
-from predpy.wrapper import Autoencoder, Predictor
+from predpy.wrapper import Autoencoder, Predictor, VAE
 from predpy.experimentator import (
     DatasetParams, ModelParams, ExperimentatorPlot,
     Experimentator, load_experimentator, plot_aggregated_predictions)
@@ -18,7 +17,7 @@ from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
-from models import LSTMAutoencoder
+from models import LSTMAutoencoder, LSTMVariationalAutoencoder
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -44,7 +43,7 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    # (iloc, {"rows_end": 1500}),
+    (iloc, {"rows_end": 1500}),
     # (iloc, {"rows_start": -20000}),
 ]
 preprocessing_pipeline = [
@@ -103,16 +102,23 @@ models_params = [
     #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 2}),
-    ModelParams(
-        name_="LSTM_h400_l4", cls_=RNN.LSTM,
-        init_params={
-            "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 4}),
+    # ModelParams(
+    #     name_="LSTM_h400_l4", cls_=RNN.LSTM,
+    #     init_params={
+    #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 4}),
     # ModelParams(
     #     name_="LSTMAutoencoder_h400_l1", cls_=LSTMAutoencoder,
     #     init_params=dict(
     #         c_in=window_size, h_size=400, n_layers=1),
-    #     WrapperCls=Autoencoder)
+    #     WrapperCls=Autoencoder),
+    ModelParams(
+        name_="LSTMVAE_h200_l1", cls_=LSTMVariationalAutoencoder,
+        init_params=dict(
+            c_in=window_size, h_size=200, n_layers=1),
+        WrapperCls=VAE),
 ]
+
+# TODO: zainicjalizować model lstm_vae i opakowac go w VAE; stworzyc model, ktory dostosuje sie do urzadzenia
 
 chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
@@ -137,7 +143,22 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+# tmp = exp.load_time_series_module(0)
+
+exp.run_experiments(
+    experiments_path="./saved_experiments", safe=False, continue_run=False)
+
+exp.plot_predictions(0)
+
+exp = load_experimentator(
+    "./saved_experiments/2021-12-26_15:47:16.pkl")
+
+# exp.run_experiments(
+#     experiments_path="./saved_experiments", safe=False, continue_run=True)
+
+# TST, ResNet, LSTM
+exp = load_experimentator(
+    "./saved_experiments/2021-12-17_21:43:48.pkl")
 
 # LSTM
 # exp = load_experimentator(
@@ -149,7 +170,8 @@ exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 
 # =============================================================================
 
-# exp.plot_preprocessed_dataset(0, True)
+# exp.plot_predictions(0, rescale=True)
+# exp.plot_preprocessed_dataset(0, rescale=True)
 # x = 0
 
 # =============================================================================
@@ -215,13 +237,37 @@ apply_noise_on_dataframes(
 # ad = ReconstructionAnomalyDetector(
 #     model, target_cols_ids=tsm.target_cols_ids())
 
+
+
+
+model2 = exp.load_pl_model(
+    model_idx=0,
+    dir_path="./checkpoints/household_power_consumption/LSTMAutoencoder_h400_l2"
+).model
+ad2 = ReconstructionAnomalyDetector(
+    model2, target_cols_ids=tsm.target_cols_ids())
+
+
+ad2.fit(
+    train_data=DataLoader(
+        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+        batch_size=tsm.batch_size),
+    anomaly_data=DataLoader(
+        MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
+        batch_size=tsm.batch_size),
+    normal_data=DataLoader(
+        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+        batch_size=tsm.batch_size),
+    class_weight=None, verbose=True, plot_time_series=True
+)
+
+
 model = exp.load_pl_model(
     model_idx=0,
     dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1"
 ).model
 
-ad = PredictionAnomalyDetector(
-    model, target_cols_ids=tsm.target_cols_ids())
+ad = PredictionAnomalyDetector(model)
 
 ad.fit(
     train_data=DataLoader(

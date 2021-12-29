@@ -5,7 +5,7 @@ sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
 from predpy.dataset import MultiTimeSeriesDataset
 from predpy.data_module import MultiTimeSeriesModule
-from predpy.wrapper import Autoencoder, Predictor
+from predpy.wrapper import Autoencoder, Predictor, VAE
 from predpy.experimentator import (
     DatasetParams, ModelParams, ExperimentatorPlot,
     Experimentator, load_experimentator, plot_aggregated_predictions)
@@ -18,7 +18,7 @@ from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
-from models import LSTMAutoencoder
+from models import LSTMAutoencoder, LSTMVariationalAutoencoder
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -40,7 +40,7 @@ load_params = {
     "index_col": ['datetime']
 }
 
-columns = ["Global_active_power", "Voltage"]
+columns = ["Global_active_power"]  # , "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
@@ -73,20 +73,20 @@ datasets_params = [
         scaler=MinMaxScaler()),
 ]
 
-c_in = 2
+c_in = 1
 c_out = 1
 
 models_params = [
-    # ModelParams(
-    #     name_="TST_l3_fcDrop0.1", cls_=TST.TST,
-    #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
-    #         "max_seq_len": window_size, "n_layers": 3, "fc_dropout": 0.1}),
-    # ModelParams(
-    #     name_="TST_l2_fcDrop0.1", cls_=TST.TST,
-    #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
-    #         "max_seq_len": window_size, "n_layers": 2, "fc_dropout": 0.1}),
+    # # ModelParams(
+    # #     name_="TST_l3_fcDrop0.1", cls_=TST.TST,
+    # #     init_params={
+    # #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
+    # #         "max_seq_len": window_size, "n_layers": 3, "fc_dropout": 0.1}),
+    # # ModelParams(
+    # #     name_="TST_l2_fcDrop0.1", cls_=TST.TST,
+    # #     init_params={
+    # #         "c_in": c_in, "c_out": c_out, "seq_len": window_size,
+    # #         "max_seq_len": window_size, "n_layers": 2, "fc_dropout": 0.1}),
     # ModelParams(
     #     name_="TST_l2_fcDrop0.0", cls_=TST.TST,
     #     init_params={
@@ -95,27 +95,32 @@ models_params = [
     # ModelParams(
     #     name_="ResNet", cls_=ResNet.ResNet,
     #     init_params={"c_in": c_in, "c_out": c_out}),
+    # # ModelParams(
+    # #     name_="LSTM_h200_l1", cls_=RNN.LSTM,
+    # #     init_params={
+    # #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
+    # # ModelParams(
+    # #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
+    # #     init_params={
+    # #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 2}),
     # ModelParams(
-    #     name_="LSTM_h200_l1", cls_=RNN.LSTM,
+    #     name_="LSTM_h400_l2", cls_=RNN.LSTM,
     #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
-    # ModelParams(
-    #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
-    #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 2}),
-    ModelParams(
-        name_="LSTM_h200_l1", cls_=RNN.LSTM,
-        init_params={
-            "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 1}),
+    #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 2}),
     # ModelParams(
     #     name_="LSTMAutoencoder_h400_l1", cls_=LSTMAutoencoder,
     #     init_params=dict(
     #         c_in=window_size, h_size=400, n_layers=1),
-    #     WrapperCls=Autoencoder)
+    #     WrapperCls=Autoencoder),
+    ModelParams(
+        name_="LSTMVAE_h200_l1", cls_=LSTMVariationalAutoencoder,
+        init_params=dict(
+            c_in=window_size, h_size=200, n_layers=1),
+        WrapperCls=VAE),
 ]
 
 chp_p = CheckpointParams(
-    dirpath="../checkpoints", monitor='val_loss', verbose=True,
+    dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
     max_epochs=1, gpus=1, auto_lr_find=True)
@@ -134,7 +139,7 @@ exp = Experimentator(
     checkpoint_params=chp_p,
     early_stopping_params=es_p,
     LoggersClasses=[TensorBoardLogger],
-    loggers_params=[LoggerParams(save_dir="../lightning_logs")]
+    loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp.run_experiments(experiments_path="../saved_experiments", safe=False)
+exp.run_experiments(experiments_path="./saved_experiments", safe=True)
