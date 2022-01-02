@@ -299,13 +299,14 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         """
         indices = []
         if labels:
-            for i in range(self.__len__()):
-                _, lab = self.get_record(i)
-                indices += [lab.name]
+            indices = self.get_labels()
         else:
-            for i in range(self.__len__()):
-                seq, _ = self.get_record(i)
-                indices += [seq.index]
+            indices = []
+            for seq in self.sequences:
+                indices += list(
+                    seq.index.to_series()
+                    .rolling(self.window_size)
+                )[self.window_size-1:-1]
         return indices
 
     def copy(self):

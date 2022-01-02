@@ -1,3 +1,3 @@
 # flake8: noqa
-from .lstm_autoencoder import LSTMAutoencoder
-from .lstm_vae import LSTMVariationalAutoencoder
+from .lstm_ae import LSTMAE
+from .lstm_vae import LSTMVAE

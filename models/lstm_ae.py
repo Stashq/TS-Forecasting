@@ -47,7 +47,7 @@ class Decoder(nn.Module):
         return x_tilda
 
 
-class LSTMAutoencoder(nn.Module):
+class LSTMAE(nn.Module):
     def __init__(
         self,
         c_in: int,
@@ -65,3 +65,6 @@ class LSTMAutoencoder(nn.Module):
         emb = self.encoder(x)
         x_tilda = self.decoder(emb)
         return x_tilda
+
+    def encode(self, x):
+        return self.encoder(x)

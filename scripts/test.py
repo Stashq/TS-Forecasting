@@ -17,7 +17,7 @@ from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
-from models import LSTMAutoencoder, LSTMVariationalAutoencoder
+from models import LSTMAE, LSTMVAE
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -43,8 +43,8 @@ columns = ["Global_active_power", "Voltage"]
 drop_refill_pipeline = [
     (loc, {"columns": columns}),
     (drop_if_is_in, (["?", np.nan]), {"columns": columns}),
-    (iloc, {"rows_end": 1500}),
-    # (iloc, {"rows_start": -20000}),
+    # (iloc, {"rows_end": 1500}),
+    (iloc, {"rows_start": -20000}),
 ]
 preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
@@ -112,7 +112,7 @@ models_params = [
     #         c_in=window_size, h_size=400, n_layers=1),
     #     WrapperCls=Autoencoder),
     ModelParams(
-        name_="LSTMVAE_h200_l1", cls_=LSTMVariationalAutoencoder,
+        name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
         init_params=dict(
             c_in=window_size, h_size=200, n_layers=1),
         WrapperCls=VAE),
@@ -143,22 +143,19 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-# tmp = exp.load_time_series_module(0)
-
-exp.run_experiments(
-    experiments_path="./saved_experiments", safe=False, continue_run=False)
+# exp.run_experiments(
+#     experiments_path="./saved_experiments", safe=False, continue_run=False)
+exp = load_experimentator(
+    "./saved_experiments/2022-01-02_13:01:41.pkl")
 
 exp.plot_predictions(0)
-
-exp = load_experimentator(
-    "./saved_experiments/2021-12-26_15:47:16.pkl")
 
 # exp.run_experiments(
 #     experiments_path="./saved_experiments", safe=False, continue_run=True)
 
 # TST, ResNet, LSTM
-exp = load_experimentator(
-    "./saved_experiments/2021-12-17_21:43:48.pkl")
+# exp = load_experimentator(
+#     "./saved_experiments/2021-12-17_21:43:48.pkl")
 
 # LSTM
 # exp = load_experimentator(
@@ -242,8 +239,8 @@ apply_noise_on_dataframes(
 
 model2 = exp.load_pl_model(
     model_idx=0,
-    dir_path="./checkpoints/household_power_consumption/LSTMAutoencoder_h400_l2"
-).model
+    dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1"
+)
 ad2 = ReconstructionAnomalyDetector(
     model2, target_cols_ids=tsm.target_cols_ids())
 
@@ -261,11 +258,10 @@ ad2.fit(
     class_weight=None, verbose=True, plot_time_series=True
 )
 
-
 model = exp.load_pl_model(
     model_idx=0,
     dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1"
-).model
+)
 
 ad = PredictionAnomalyDetector(model)
 

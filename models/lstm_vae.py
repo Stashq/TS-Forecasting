@@ -51,14 +51,14 @@ class Decoder(nn.Module):
         return x_tilda
 
 
-class LSTMVariationalAutoencoder(nn.Module):
+class LSTMVAE(nn.Module):
     def __init__(
         self,
         c_in: int,
         h_size: int,
         n_layers: int
     ):
-        super(LSTMVariationalAutoencoder, self).__init__()
+        super(LSTMVAE, self).__init__()
         self.encoder = Encoder(c_in, h_size, n_layers)
         self.decoder = Decoder(h_size, c_in, n_layers)
         # TODO: set same dimentions for input (z) as output of encoder
@@ -71,8 +71,12 @@ class LSTMVariationalAutoencoder(nn.Module):
         return z
 
     def forward(self, x):
+        z, z_mu, z_log_sig = self.encode(x)
+        x_tilda = self.decoder(z)
+        return (x_tilda, z_mu, z_log_sig)
+
+    def encode(self, x):
         emb = self.encoder(x)
         z_mu, z_log_sig = self.mu_dense(emb), self.log_sig_dense(emb)
         z = self.reparametrization(z_mu, z_log_sig)
-        x_tilda = self.decoder(z)
-        return (x_tilda, z_mu, z_log_sig)
+        return z, z_mu, z_log_sig

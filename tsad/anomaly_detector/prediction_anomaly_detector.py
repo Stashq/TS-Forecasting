@@ -1,8 +1,9 @@
 from .base import AnomalyDetector
+from predpy.wrapper.base import TSModelWrapper
 import torch
 import numpy as np
 from typing import Type, Union, Tuple
-from tsad.distributor import Distributor, GaussianDistributor
+from tsad.distributor import Distributor, Gaussian
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader, Dataset
 
@@ -10,8 +11,8 @@ from torch.utils.data import DataLoader, Dataset
 class PredictionAnomalyDetector(AnomalyDetector):
     def __init__(
         self,
-        time_series_model: torch.nn.Module,
-        DistributorCls: Type[Distributor] = GaussianDistributor,
+        time_series_model: TSModelWrapper,
+        DistributorCls: Type[Distributor] = Gaussian,
         **distributor_kwargs
     ):
         super().__init__(
@@ -24,7 +25,7 @@ class PredictionAnomalyDetector(AnomalyDetector):
         return_predictions: bool = False
     ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         with torch.no_grad():
-            preds = self.time_series_model(sequences)
+            preds = self.time_series_model.predict(sequences)
             errors = torch.abs(labels - preds).cpu().detach().numpy()
 
         if return_predictions:
@@ -48,7 +49,7 @@ class PredictionAnomalyDetector(AnomalyDetector):
         for data in iterator:
             labels += [data["label"]]
             with torch.no_grad():
-                preds += self.time_series_model(data["sequence"])
+                preds += self.time_series_model.predict(data["sequence"])
         preds = torch.cat(preds, 0)
         if len(preds.shape) == 1:
             preds = torch.unsqueeze(preds, 1)

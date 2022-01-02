@@ -1,8 +1,9 @@
 from .base import AnomalyDetector
+from predpy.wrapper.base import TSModelWrapper
 import torch
 import numpy as np
 from typing import Type, Union, Tuple, List
-from tsad.distributor import Distributor, GaussianDistributor
+from tsad.distributor import Distributor, Gaussian
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader, Dataset
 
@@ -10,8 +11,8 @@ from torch.utils.data import DataLoader, Dataset
 class ReconstructionAnomalyDetector(AnomalyDetector):
     def __init__(
         self,
-        time_series_model: torch.nn.Module,
-        DistributorCls: Type[Distributor] = GaussianDistributor,
+        time_series_model: TSModelWrapper,
+        DistributorCls: Type[Distributor] = Gaussian,
         target_cols_ids: List[int] = None,
         **distributor_kwargs
     ):
@@ -39,7 +40,7 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
     ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         with torch.no_grad():
             seqs = self.get_seqences(records)
-            preds = self.time_series_model()
+            preds = self.time_series_model.predict(seqs)
             errors = torch.abs(seqs - preds).cpu().detach().numpy()
 
         if return_predictions:
@@ -64,7 +65,7 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
             batch_seqs = self.get_seqences(batch)
             seqs += [batch_seqs]
             with torch.no_grad():
-                preds += self.time_series_model(batch_seqs)
+                preds += self.time_series_model.predict(batch_seqs)
         preds = torch.cat(preds, 0)
         if len(preds.shape) == 2:
             preds = preds.unsqueeze(dim=1)

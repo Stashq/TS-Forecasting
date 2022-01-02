@@ -311,36 +311,6 @@ class Experimentator:
 
         return last_model_file
 
-
-
-    def _ae_preds_to_pd(self, preds: List[torch.Tensor], ids: pd.Index):
-        pass
-
-    def _get_same_preds(
-        self,
-        preds: List[torch.Tensor],
-        idx: int,
-        window_size: int
-    ):
-        res = []
-        for i in range(window_size):
-            if i > idx:
-                break
-            res += preds[idx-i][i]
-
-        return res
-
-    def _preds_to_quantiles(self, preds: List[torch.Tensor]):
-        # TODO: quants for more than 1 column
-        quants = []
-        for i in range(len(preds)):
-            preds[i]
-        
-        return quants
-
-
-
-
     def _experiment_step(
         self,
         tsm: MultiTimeSeriesModule,
@@ -353,25 +323,6 @@ class Experimentator:
         # collect predictions made on test dataset
         preds = pl_model.get_dataset_predictions(tsm.test_dataloader())
         return preds
-        # labels = tsm.test_dataloader().dataset.get_labels()
-
-        # if isinstance(labels, pd.DataFrame):
-        #     columns = labels.columns
-        # else:
-        #     columns = [labels.name]
-
-        # if isinstance(pl_model, Autoencoder) or isinstance(pl_model, VAE):
-        #     quants = self._get_preds_quantiles(preds)
-
-        #     columns = ...  # TODO: columns to col quantiles names
-        #     df = pd.DataFrame(
-        #         data=quants, columns=columns
-        #     ).set_index("datetime", drop=True)
-        # else:
-        #     df = pd.DataFrame(
-        #         data=preds, columns=columns
-        #     ).set_index("datetime", drop=True)
-        # return df
 
     def _deliver_exception(self, msg: str, exception: Exception, safe: bool):
         if safe:
@@ -388,7 +339,6 @@ class Experimentator:
         dataset_idx: int,
         model_idx: int = None
     ) -> str:
-        msg = None
         ds_name = self.datasets_params.iloc[dataset_idx]["name_"]
         if model_idx is None:
             msg = dataset_setup_exception_msg.substitute(
@@ -481,10 +431,13 @@ class Experimentator:
                     if continue_run and\
                             model_idx < self.last_step_end[1]:
                         continue
-
+                    # start = time.time()
                     model_preds_df = self._experiment_step(
                         tsm=tsm, model_idx=model_idx,
                         continue_run=continue_run)
+                    # print("Time: " + str(time.time() - start))
+                    # print("Predictions memory size:\n" +
+                    #       str(model_preds_df.memory_usage(deep=True)))
 
                     # saving store predictions as dataframe
                     self.predictions = pd.concat([
@@ -507,6 +460,7 @@ class Experimentator:
                         safe=safe,
                     )
                     continue
+        print("Experiments ended sucessfully")
         return self
 
     def get_targets_scaler(
@@ -580,18 +534,18 @@ class Experimentator:
                 x=ts.index, y=ts, connectgaps=False,
                 name=name + version)]
         elif isinstance(ts, pd.DataFrame) and is_autoencoder:
+            group_id = np.random.randint(9999999999, size=1)[0]
             columns = set([col[:-5] for col in ts.columns])
             rgb = np.random.randint(256, size=3)
             data = [
                 go.Scatter(
-                    x=ts.index.tolist() + ts.index.tolist(),
-                    y=pd.concat([ts[col + "_q100"], ts[col + "_q000"]]),
-                    fill='toself',
-                    fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.2)',
-                    line=dict(color='rgba(255, 255, 255, 0)'),
-                    hoverinfo="skip",
-                    showlegend=False)
-                for col in columns]
+                    x=ts.index, y=ts[col + "_q050"], connectgaps=False,
+                    name=name + f"-{col}" + version,
+                    legendgroup=str(group_id),
+                    line=dict(
+                        color=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 1.0)'))
+                for col in columns
+            ]
             data += [
                 go.Scatter(
                     x=ts.index.tolist() + ts.index.tolist(),
@@ -600,16 +554,24 @@ class Experimentator:
                     fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
                     line=dict(color='rgba(255, 255, 255, 0)'),
                     hoverinfo="skip",
-                    showlegend=False)
+                    legendgroup=str(group_id),
+                    name="25% - 75%"
+                    # showlegend=False
+                )
                 for col in columns]
             data += [
                 go.Scatter(
-                    x=ts.index, y=ts[col + "_q050"], connectgaps=False,
-                    name=name + f"-{col}" + version,
-                    line=dict(
-                        color=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 1.0)'))
-                for col in columns
-            ]
+                    x=ts.index.tolist() + ts.index.tolist(),
+                    y=pd.concat([ts[col + "_q100"], ts[col + "_q000"]]),
+                    fill='toself',
+                    fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.2)',
+                    line=dict(color='rgba(255, 255, 255, 0)'),
+                    hoverinfo="skip",
+                    legendgroup=str(group_id),
+                    name="0% - 100%"
+                    # showlegend=False
+                )
+                for col in columns]
         elif isinstance(ts, pd.DataFrame):
             if len(ts.columns) > 1:
                 data = [

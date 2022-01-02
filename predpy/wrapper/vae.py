@@ -34,17 +34,21 @@ class VAE(Autoencoder):
         criterion: nn.Module = nn.MSELoss(),
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
-        target_cols_ids: List[int] = None
+        target_cols_ids: List[int] = None,
+        kld_weight: float = 1.0
     ):
         super().__init__(
             model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs,
             target_cols_ids=target_cols_ids)
+        self.kld_weight = kld_weight
 
     def get_loss(
         self,
-        *args,
-        # **kwargs
+        recons: torch.Tensor,
+        input: torch.Tensor,
+        mu: torch.Tensor,
+        log_sig: torch.Tensor
     ) -> dict:
         """
         Computes the VAE loss function.
@@ -54,13 +58,8 @@ class VAE(Autoencoder):
         :param kwargs:
         :return:
         """
-        recons = args[0]
-        input = args[1]
-        mu = args[2]
-        log_sig = args[3]
 
         # Account for the minibatch samples from the dataset
-        # kld_weight = kwargs['M_N']
 
         # recons_loss = F.mse_loss(recons, input)
         recons_loss = self.criterion(recons, input)
@@ -70,14 +69,8 @@ class VAE(Autoencoder):
             dim=0
         )
 
-        # loss = recons_loss + kld_weight * kld_loss
-        loss = recons_loss + kld_loss
+        loss = recons_loss + self.kld_weight * kld_loss
         return loss
-        # return {
-        #     'loss': loss,
-        #     'Reconstruction_Loss': recons_loss.detach(),
-        #     'KLD': -kld_loss.detach()
-        # }
 
     def training_step(self, batch, batch_idx):
         sequences, labels = self.get_Xy(batch)

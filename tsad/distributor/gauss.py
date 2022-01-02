@@ -7,10 +7,9 @@ BEFORE_FIT_ERROR =\
     "Attempt to obtain probabilities before fitting the distribution."
 
 
-class GaussianDistributor(Distributor):
-    """Gaussian distributions where dimensions are agnostic to each other -
-    for every dimention different gaussian distribution is set without
-    including correlation.
+class Gaussian(Distributor):
+    """Gaussian distributions where for every dimention
+    different gaussian distribution is set without including correlation.
     """
     def __init__(self):
         self._n_dims = None

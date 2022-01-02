@@ -18,7 +18,7 @@ from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
-from models import LSTMAutoencoder, LSTMVariationalAutoencoder
+from models import LSTMAE, LSTMVAE
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -108,15 +108,20 @@ models_params = [
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 2}),
     # ModelParams(
-    #     name_="LSTMAutoencoder_h400_l1", cls_=LSTMAutoencoder,
+    #     name_="LSTMAutoencoder_h200_l1", cls_=LSTMAE,
     #     init_params=dict(
-    #         c_in=window_size, h_size=400, n_layers=1),
+    #         c_in=window_size, h_size=200, n_layers=1),
     #     WrapperCls=Autoencoder),
     ModelParams(
-        name_="LSTMVAE_h200_l1", cls_=LSTMVariationalAutoencoder,
+        name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
         init_params=dict(
             c_in=window_size, h_size=200, n_layers=1),
-        WrapperCls=VAE),
+        WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=0.005)),
+    ModelParams(
+        name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
+        init_params=dict(
+            c_in=window_size, h_size=200, n_layers=1),
+        WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=0.002)),
 ]
 
 chp_p = CheckpointParams(
@@ -143,3 +148,8 @@ exp = Experimentator(
 )
 
 exp.run_experiments(experiments_path="./saved_experiments", safe=True)
+# exp = load_experimentator(
+#     "./saved_experiments/2021-12-29_01:31:42.pkl"
+# )
+
+exp.plot_predictions(0)

@@ -70,14 +70,15 @@ class Autoencoder(TSModelWrapper):
         preds = torch.cat(preds)
         preds = preds.transpose(1, 2)
         preds = preds.view(-1, preds.shape[-1])
-        preds = preds.tolist()
+        preds = preds.numpy()
 
         if scaler is not None:
             preds =\
                 scaler.inverse_transform([preds]).tolist()
 
         ids = dataloader.dataset.get_indices_like_recs(labels=False)
-        ids = pd.concat([ids.to_series() for ids in ids])
+        ids = pd.concat(ids)
+        # ids = pd.concat([ids.to_series() for ids in ids])
         columns = dataloader.dataset.target
         preds_df = pd.DataFrame(preds, columns=columns, index=ids)
         df = pd.DataFrame(ids.unique(), columns=["datetime"])\
@@ -92,3 +93,6 @@ class Autoencoder(TSModelWrapper):
             df[col + "_q100"] = grouped.quantile(1.0)
 
         return df
+
+    def encode(self, x):
+        return self.model.encode(x)

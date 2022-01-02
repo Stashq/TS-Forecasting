@@ -1,4 +1,5 @@
-from tsad.distributor import Distributor, GaussianDistributor
+from tsad.distributor import Distributor, Gaussian
+from predpy.wrapper.base import TSModelWrapper
 
 import torch
 import numpy as np
@@ -23,8 +24,8 @@ Allowed types: torch.Tensor, DataLoader.")
 class AnomalyDetector:
     def __init__(
         self,
-        time_series_model: torch.nn.Module,
-        DistributorCls: Type[Distributor] = GaussianDistributor,
+        time_series_model: TSModelWrapper,
+        DistributorCls: Type[Distributor] = Gaussian,
         **distributor_kwargs
     ):
         self.time_series_model = time_series_model
@@ -50,14 +51,6 @@ class AnomalyDetector:
     ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         pass
 
-    def fit_distributor(
-        self,
-        data: Union[torch.Tensor, DataLoader, Dataset],
-        verbose: bool = False
-    ):
-        result = self._any_forward(data, verbose)
-        self.distributor.fit(result)
-
     def _any_forward(
         self,
         data: Union[torch.Tensor, DataLoader, Dataset],
@@ -78,6 +71,14 @@ class AnomalyDetector:
                 UNKNOWN_TYPE_MSG.substitute(data_type=type(data)))
 
         return result
+
+    def fit_distributor(
+        self,
+        data: Union[torch.Tensor, DataLoader, Dataset],
+        verbose: bool = False
+    ):
+        result = self._any_forward(data, verbose)
+        self.distributor.fit(result)
 
     def fit_threshold(
         self,
@@ -116,8 +117,9 @@ class AnomalyDetector:
 
         cm = confusion_matrix(classes, pred_cls)
         print(cm)
+
         if plot_distribution:
-            self.plot_with_distribution(
+            self.plot_gaussian_result(
                 vals=np.concatenate([
                     n_res, a_res]),
                 classes=classes,
@@ -179,13 +181,16 @@ class AnomalyDetector:
             result = np.argwhere(result == 1)
         return result
 
-    def plot_with_distribution(
+    def plot_gaussian_result(
         self,
         vals: np.ndarray,
         classes: List[int] = None,
         title: str = None,
         file_path: str = None
     ):
+        if self.distributor is not Gaussian:
+            print("Can not plot with distributor other than Gaussian")
+            return None
         n_dims = self.distributor._n_dims
         fig = make_subplots(rows=n_dims, cols=1)
         pdf = self.distributor.pdf(vals)
@@ -275,16 +280,6 @@ class AnomalyDetector:
         true_series = time_series.dataset.sequences
         if isinstance(true_series, list):
             true_series = pd.concat(true_series)
-        # true_series = pd.melt(
-        #     true_series.reset_index(),
-        #     id_vars='datetime',
-        #     var_name="column_name",
-        #     value_vars=true_series.columns)
-        # data = [go.Scatter(
-        #     x=true_series["datetime"],
-        #     y=true_series["value"],
-        #     color=true_series["column_name"]
-        # )]
 
         data = []
         for col_name in target:
