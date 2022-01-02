@@ -148,7 +148,7 @@ exp = Experimentator(
 exp = load_experimentator(
     "./saved_experiments/2022-01-02_13:01:41.pkl")
 
-exp.plot_predictions(0)
+# exp.plot_predictions(0)
 
 # exp.run_experiments(
 #     experiments_path="./saved_experiments", safe=False, continue_run=True)
@@ -241,8 +241,10 @@ model2 = exp.load_pl_model(
     model_idx=0,
     dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1"
 )
+
+from tsad.distributor import Gaussian
 ad2 = ReconstructionAnomalyDetector(
-    model2, target_cols_ids=tsm.target_cols_ids())
+    model2, target_cols_ids=tsm.target_cols_ids())  # , distributor=Gaussian())
 
 
 ad2.fit(
@@ -258,25 +260,27 @@ ad2.fit(
     class_weight=None, verbose=True, plot_time_series=True
 )
 
-model = exp.load_pl_model(
-    model_idx=0,
-    dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1"
-)
+ad2.find_anomalies(tsm.test_dataloader())
 
-ad = PredictionAnomalyDetector(model)
+# model = exp.load_pl_model(
+#     model_idx=0,
+#     dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1"
+# )
 
-ad.fit(
-    train_data=DataLoader(
-        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
-        batch_size=tsm.batch_size),
-    anomaly_data=DataLoader(
-        MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
-        batch_size=tsm.batch_size),
-    normal_data=DataLoader(
-        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
-        batch_size=tsm.batch_size),
-    class_weight=None, verbose=True, plot_time_series=True
-)
+# ad = PredictionAnomalyDetector(model)
+
+# ad.fit(
+#     train_data=DataLoader(
+#         MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+#         batch_size=tsm.batch_size),
+#     anomaly_data=DataLoader(
+#         MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
+#         batch_size=tsm.batch_size),
+#     normal_data=DataLoader(
+#         MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+#         batch_size=tsm.batch_size),
+#     class_weight=None, verbose=True, plot_time_series=True
+# )
 
 # ad.find_anomalies(tsm.test_dataloader())
 

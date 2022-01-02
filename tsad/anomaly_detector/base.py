@@ -1,11 +1,11 @@
-from tsad.distributor import Distributor, Gaussian
-from predpy.wrapper.base import TSModelWrapper
+from tsad.distributor import Distributor, MVGaussian, Gaussian
+from predpy.wrapper import TSModelWrapper
 
 import torch
 import numpy as np
 import pandas as pd
 from abc import abstractmethod
-from typing import Type, Union, Tuple, Dict, List
+from typing import Union, Tuple, Dict, List
 from torch.utils.data import DataLoader, Dataset
 from sklearn.linear_model import LogisticRegression
 from string import Template
@@ -25,12 +25,11 @@ class AnomalyDetector:
     def __init__(
         self,
         time_series_model: TSModelWrapper,
-        DistributorCls: Type[Distributor] = Gaussian,
-        **distributor_kwargs
+        distributor: Distributor = MVGaussian(),
     ):
         self.time_series_model = time_series_model
         self.time_series_model.eval()
-        self.distributor = DistributorCls(**distributor_kwargs)
+        self.distributor = distributor
         self.thresholder = None
 
     @abstractmethod
