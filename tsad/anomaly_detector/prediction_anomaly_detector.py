@@ -3,7 +3,7 @@ from predpy.wrapper import TSModelWrapper
 import torch
 import numpy as np
 from typing import Union, Tuple
-from tsad.distributor import Distributor, MVGaussian
+from tsad.distributor import Distributor, Gaussian
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader, Dataset
 
@@ -12,7 +12,7 @@ class PredictionAnomalyDetector(AnomalyDetector):
     def __init__(
         self,
         time_series_model: TSModelWrapper,
-        distributor: Distributor = MVGaussian(),
+        distributor: Distributor = Gaussian(),
     ):
         super().__init__(
             time_series_model, distributor)

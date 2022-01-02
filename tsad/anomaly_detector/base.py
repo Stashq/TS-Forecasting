@@ -1,4 +1,4 @@
-from tsad.distributor import Distributor, MVGaussian, Gaussian
+from tsad.distributor import Distributor, Gaussian
 from predpy.wrapper import TSModelWrapper
 
 import torch
@@ -25,7 +25,7 @@ class AnomalyDetector:
     def __init__(
         self,
         time_series_model: TSModelWrapper,
-        distributor: Distributor = MVGaussian(),
+        distributor: Distributor = Gaussian(),
     ):
         self.time_series_model = time_series_model
         self.time_series_model.eval()
