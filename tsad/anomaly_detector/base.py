@@ -157,19 +157,23 @@ class AnomalyDetector:
 
     def find_anomalies(
         self,
-        data: Union[DataLoader, Dataset],
+        data: DataLoader,
         classes_: List[int] = None,
         return_indices: bool = False,
         verbose: bool = True,
         plot_dist: bool = False,
         plot_time_series: bool = False
     ) -> Union[Tuple[np.ndarray], np.ndarray]:
-        vals = self.dataset_forward(
-            data, verbose, return_predictions=plot_time_series)
-        if isinstance(vals, tuple):
-            vals, model_preds = vals
+        if plot_time_series:
+            vals, model_preds = self.dataset_forward(
+                data, verbose, return_predictions=True)
+        else:
+            vals = self.dataset_forward(
+                data, verbose, return_predictions=False)
+
         cdf_res = self.distributor.cdf(vals)
         result = self.thresholder.predict(cdf_res)
+
         if plot_dist:
             self.plot_with_distribution(
                 cdf_res, title="Anomalies on distribution plot")

@@ -8,8 +8,7 @@ Split data between training, validation, test datasets and stores them using
 import math
 from typing import Union, Tuple, List
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader
-from predpy.dataset import MultiTimeSeriesDataset, TimeSeriesDataset
+from predpy.dataset import MultiTimeSeriesDataset, MultiTimeSeriesDataloader
 import pandas as pd
 from string import Template
 
@@ -34,7 +33,6 @@ class MultiTimeSeriesModule(LightningDataModule):
         split_proportions: Union[Tuple[float], List[float]],
         window_size: int,
         batch_size: int = 8,
-        DatasetCls: TimeSeriesDataset = MultiTimeSeriesDataset,
         overlapping: bool = False
     ):
         """Creates MultiTimeSeriesModule instance.
@@ -73,7 +71,6 @@ class MultiTimeSeriesModule(LightningDataModule):
         self.target = target
         self.window_size = window_size
         self.batch_size = batch_size
-        self.DatasetCls = DatasetCls
         self.overlapping = overlapping
 
         # setting proportions
@@ -102,7 +99,6 @@ class MultiTimeSeriesModule(LightningDataModule):
             split_proportions=self.split_proportions[:],
             window_size=self.window_size,
             batch_size=self.batch_size,
-            DatasetCls=self.DatasetCls,
             overlapping=self.overlapping
         )
 
@@ -361,19 +357,19 @@ class MultiTimeSeriesModule(LightningDataModule):
     def setup(self, stage: str = None):
         start, end = self.train_range
         seqs = self.get_recs_range(start, end)
-        self.train_dataset = self.DatasetCls(
+        self.train_dataset = MultiTimeSeriesDataset(
             seqs, self.window_size, self.target)
         start, end = self.val_range
         seqs = self.get_recs_range(start, end)
-        self.val_dataset = self.DatasetCls(
+        self.val_dataset = MultiTimeSeriesDataset(
             seqs, self.window_size, self.target)
         start, end = self.test_range
         seqs = self.get_recs_range(start, end)
-        self.test_dataset = self.DatasetCls(
+        self.test_dataset = MultiTimeSeriesDataset(
             seqs, self.window_size, self.target)
 
     def train_dataloader(self):
-        return DataLoader(
+        return MultiTimeSeriesDataloader(
             self.train_dataset,
             batch_size=self.batch_size,
             shuffle=False,
@@ -381,7 +377,7 @@ class MultiTimeSeriesModule(LightningDataModule):
         )
 
     def val_dataloader(self):
-        return DataLoader(
+        return MultiTimeSeriesDataloader(
             self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
@@ -389,7 +385,7 @@ class MultiTimeSeriesModule(LightningDataModule):
         )
 
     def test_dataloader(self):
-        return DataLoader(
+        return MultiTimeSeriesDataloader(
             self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,

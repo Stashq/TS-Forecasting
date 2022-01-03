@@ -16,4 +16,5 @@ It is strongly advised not to change class object during usage.
 from .time_series_records_dataset import TimeSeriesRecordsDataset
 from .single_time_series_dataset import SingleTimeSeriesDataset
 from .time_series_dataset import TimeSeriesDataset
-from .multi_time_series_dataset import MultiTimeSeriesDataset
+from .multi_time_series_dataset import (
+    MultiTimeSeriesDataset, MultiTimeSeriesDataloader)

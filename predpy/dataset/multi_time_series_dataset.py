@@ -7,6 +7,7 @@ import torch
 import pandas as pd
 from .time_series_dataset import TimeSeriesDataset
 from typing import Dict, List, Tuple, Union
+from torch.utils.data import DataLoader
 
 
 class MultiTimeSeriesDataset(TimeSeriesDataset):
@@ -318,3 +319,14 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             window_size=self.window_size,
             target=self.target[:]
         )
+
+
+class MultiTimeSeriesDataloader(DataLoader):
+    def __init__(
+        self,
+        dataset: MultiTimeSeriesDataset,
+        *args, **kwargs
+    ):
+        if not isinstance(dataset, MultiTimeSeriesDataset):
+            raise ValueError("Dataset has to be MultiTimeSeriesDataset type.")
+        super().__init__(dataset, *args, **kwargs)
