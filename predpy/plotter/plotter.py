@@ -11,92 +11,96 @@ from .experimentator_plot import ExperimentatorPlot
 from predpy.wrapper import Autoencoder
 
 
+def _series_to_scatter(
+    ts: pd.Series, name: str, version: str = ""
+) -> List[go.Scatter]:
+    return [go.Scatter(
+        x=ts.index, y=ts, connectgaps=False,
+        name=name + version)]
+
+
+def _reconstruction_quantiles_to_scatters(
+    ts: pd.Series, name: str, version: str = ""
+) -> List[go.Scatter]:
+    group_id = np.random.randint(9999999999, size=1)[0]
+    columns = set([col[:-5] for col in ts.columns])
+    rgb = np.random.randint(256, size=3)
+
+    # quantile: 50%
+    data = [
+        go.Scatter(
+            x=ts.index, y=ts[col + "_q050"], connectgaps=False,
+            name=name + f"-{col}" + version,
+            legendgroup=str(group_id),
+            line=dict(
+                color=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 1.0)'))
+        for col in columns
+    ]
+
+    # quantiles: 25% - 75%
+    data += [
+        go.Scatter(
+            x=ts.index.tolist() + ts.index.tolist(),
+            y=pd.concat([ts[col + "_q075"], ts[col + "_q025"]]),
+            fill='toself',
+            fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
+            line=dict(color='rgba(255, 255, 255, 0)'),
+            hoverinfo="skip",
+            legendgroup=str(group_id),
+            name="25% - 75%"
+        )
+        for col in columns]
+
+    # quantiles: 0% - 100%
+    data += [
+        go.Scatter(
+            x=ts.index.tolist() + ts.index.tolist(),
+            y=pd.concat([ts[col + "_q100"], ts[col + "_q000"]]),
+            fill='toself',
+            fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.2)',
+            line=dict(color='rgba(255, 255, 255, 0)'),
+            hoverinfo="skip",
+            legendgroup=str(group_id),
+            name="0% - 100%"
+        )
+        for col in columns]
+    return data
+
+
+def _preds_to_scatters(
+    ts: pd.Series, name: str, version: str = ""
+) -> List[go.Scatter]:
+    if len(ts.columns) > 1:
+        data = [
+            go.Scatter(
+                x=ts.index, y=ts[col], connectgaps=False,
+                name=name + f"-{col}" + version)
+            for col in ts.columns
+        ]
+    else:
+        data = [go.Scatter(
+            x=ts.index, y=ts.iloc[:, 0], connectgaps=False,
+            name=name + version)]
+    return data
+
+
 def ts_to_plotly_data(
     ts: Union[pd.Series, pd.DataFrame],
     name: str,
     version: str = "",
+    set_gaps: bool = True,
     is_autoencoder: bool = False
 ) -> List[go.Scatter]:
+    if set_gaps:
+        ts = _set_gaps(ts)
+
     if isinstance(ts, pd.Series):
-        data = [go.Scatter(
-            x=ts.index, y=ts, connectgaps=False,
-            name=name + version)]
+        data = _series_to_scatter(ts, name=name, version=version)
     elif isinstance(ts, pd.DataFrame) and is_autoencoder:
-        group_id = np.random.randint(9999999999, size=1)[0]
-        columns = set([col[:-5] for col in ts.columns])
-        rgb = np.random.randint(256, size=3)
-        data = [
-            go.Scatter(
-                x=ts.index, y=ts[col + "_q050"], connectgaps=False,
-                name=name + f"-{col}" + version,
-                legendgroup=str(group_id),
-                line=dict(
-                    color=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 1.0)'))
-            for col in columns
-        ]
-        data += [
-            go.Scatter(
-                x=ts.index.tolist() + ts.index.tolist(),
-                y=pd.concat([ts[col + "_q075"], ts[col + "_q025"]]),
-                fill='toself',
-                fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
-                line=dict(color='rgba(255, 255, 255, 0)'),
-                hoverinfo="skip",
-                legendgroup=str(group_id),
-                name="25% - 75%"
-                # showlegend=False
-            )
-            for col in columns]
-        data += [
-            go.Scatter(
-                x=ts.index.tolist() + ts.index.tolist(),
-                y=pd.concat([ts[col + "_q100"], ts[col + "_q000"]]),
-                fill='toself',
-                fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.2)',
-                line=dict(color='rgba(255, 255, 255, 0)'),
-                hoverinfo="skip",
-                legendgroup=str(group_id),
-                name="0% - 100%"
-                # showlegend=False
-            )
-            for col in columns]
-    elif isinstance(ts, pd.DataFrame):
-        if len(ts.columns) > 1:
-            data = [
-                go.Scatter(
-                    x=ts.index, y=ts[col], connectgaps=False,
-                    name=name + f"-{col}" + version)
-                for col in ts.columns
-            ]
-        else:
-            data = [go.Scatter(
-                x=ts.index, y=ts.iloc[:, 0], connectgaps=False,
-                name=name + version)]
-    return data
-
-
-def _true_vals_and_preds_to_plotly_data(
-    true_vals: Union[pd.Series, pd.DataFrame],
-    predictions: pd.DataFrame,
-    models_names: List[str],
-    version: str = "",
-    are_ae: List[bool] = None
-) -> List[go.Scatter]:
-    true_vals = _split_ts_where_breaks(true_vals)
-    true_vals = _concat_dfs_with_gaps(true_vals)
-    if are_ae is None:
-        are_ae = [False]*len(predictions)
-
-    data = ts_to_plotly_data(true_vals, "true_values", version)
-    for i, (_, row) in enumerate(predictions.iterrows()):
-        preds = _split_ts_where_breaks(row["predictions"])
-        preds = _concat_dfs_with_gaps(preds)
-
-        # model_params = models_params.iloc[row["model_id"]]
-        # is_autoencoder = issubclass(model_params.WrapperCls, Autoencoder)
-        # model_name = model_params.name_
-        data += ts_to_plotly_data(
-            preds, models_names[i], version, is_autoencoder=are_ae[i])
+        data = _reconstruction_quantiles_to_scatters(
+            ts, name=name, version=version)
+    elif isinstance(ts, pd.DataFrame) and is_autoencoder is False:
+        data = _preds_to_scatters(ts, name=name, version=version)
     return data
 
 
@@ -329,9 +333,41 @@ def _add_dataset_type_vrect(
         fig.add_vrect(x0=x0, x1=x1, **kwargs)
 
 
+def preds_and_true_vals_to_scatter_data(
+    predictions: pd.DataFrame,
+    true_vals: Union[pd.Series, pd.DataFrame],
+    target: str,
+    models_names: List[str],
+    scaler: TransformerMixin = None,
+    version: str = "",
+    are_ae: List[bool] = None
+) -> List[go.Scatter]:
+    if scaler is not None:
+        _rescale_true_vals_and_preds(
+            scaler=scaler, true_vals=true_vals,
+            predictions_df=predictions, target=target)
+    if are_ae is None:
+        are_ae = [False]*len(predictions)
+
+    data = ts_to_plotly_data(
+        true_vals, "true_vals", version, is_autoencoder=False)
+
+    for i, (_, row) in enumerate(predictions.iterrows()):
+        data += ts_to_plotly_data(
+            row["predictions"], models_names[i], version,
+            is_autoencoder=are_ae[i])
+    return data
+
+
+def _set_gaps(ts: Union[pd.Series, pd.DataFrame]):
+    ts = _split_ts_where_breaks(ts)
+    ts = _concat_dfs_with_gaps(ts)
+    return ts
+
+
 def plot_predictions(
     predictions: pd.DataFrame,
-    true_values: np.ndarray,
+    true_vals: Union[pd.Series, pd.DataFrame],
     target: str,
     models_names: List[str],
     scaler: TransformerMixin = None,
@@ -358,18 +394,9 @@ def plot_predictions(
         If type is string, chart will be saved to html file with provided
         path.
     """
-    # predictions_df = _get_models_predictions(dataset_idx,models_ids)
-    # target = ds_params.target
-
-    if scaler is not None:
-        _rescale_true_vals_and_preds(
-            scaler=scaler, true_vals=true_values,
-            predictions_df=predictions, target=target)
-
-    data = _true_vals_and_preds_to_plotly_data(
-        true_vals=true_values, predictions=predictions,
-        models_names=models_names, are_ae=are_ae)
-
+    data = preds_and_true_vals_to_scatter_data(
+        true_vals=true_vals, predictions=predictions, target=target,
+        models_names=models_names, scaler=scaler, are_ae=are_ae)
     layout = go.Layout(
         title=title,
         yaxis=dict(title=target),
@@ -381,6 +408,25 @@ def plot_predictions(
         plot(fig, filename=file_path)
     else:
         fig.show()
+
+
+def plot_exp_predictions(
+    exp: Experimentator,
+    dataset_idx: int,
+    models_ids: List[int] = None,
+    file_path: str = None
+):
+    d_params = exp.datasets_params.loc[dataset_idx]
+    ms_params = exp.models_params.loc[models_ids]
+    models_names = ms_params["name_"].tolist()
+    are_ae = ms_params["WrapperCls"].apply(
+        lambda x: issubclass(x, Autoencoder)
+    ).tolist()
+    plot_predictions(
+        predictions=exp.get_models_predictions(dataset_idx, models_ids),
+        true_vals=d_params.true_vals, target=d_params.target,
+        models_names=models_names, scaler=d_params.scaler,
+        title=d_params.name_, are_ae=are_ae, file_path=file_path)
 
 
 def plot_aggregated_predictions(
@@ -426,23 +472,20 @@ def plot_aggregated_predictions(
             ds_params = exp.datasets_params.iloc[dataset_idx]
             target = ds_params.target
 
-            # if rescale:
-            #     # _rescale_true_vals_and_preds(
-            #     #     dataset_idx, ds_params.true_values, predictions_df,
-            #     #     target)
-            #     _rescale_true_vals_and_preds(
-            #         scaler=scaler, true_vals=true_values,
-            #         predictions_df=predictions, target=target)
+            if rescale:
+                scaler = ds_params.scaler
 
             m_params = exp.models_params.loc[models_ids]
             models_names = m_params["name_"].tolist()
             are_ae = m_params["WrapperCls"].apply(
                 lambda x: issubclass(x, Autoencoder)
             ).tolist()
-            data += _true_vals_and_preds_to_plotly_data(
-                ds_params.true_values, predictions_df, models_names,
+            data += preds_and_true_vals_to_scatter_data(
+                true_vals=ds_params.true_values, predictions=predictions_df,
+                models_names=models_names, target=target, are_ae=are_ae,
                 version=f", exp: {exp.exp_date}, ds: {dataset_idx}",
-                are_ae=are_ae)  # ! napraw zeby nie zawsze bylo False
+                scaler=scaler
+            )
 
     layout = go.Layout(
         title=ds_params.name_,
