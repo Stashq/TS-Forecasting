@@ -2,10 +2,11 @@ from .base import AnomalyDetector
 from predpy.wrapper import TSModelWrapper
 import torch
 import numpy as np
+import pandas as pd
 from typing import Union, Tuple
 from tsad.distributor import Distributor, Gaussian
 from tqdm.auto import tqdm
-from torch.utils.data import DataLoader, Dataset
+from predpy.dataset import MultiTimeSeriesDataloader
 
 
 class PredictionAnomalyDetector(AnomalyDetector):
@@ -33,22 +34,22 @@ class PredictionAnomalyDetector(AnomalyDetector):
 
     def dataset_forward(
         self,
-        data: Union[DataLoader, Dataset],
+        dataloader: MultiTimeSeriesDataloader,
         verbose: bool = True,
         return_predictions: bool = False
-    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
         iterator = None
         if verbose:
-            iterator = tqdm(data, desc="Time series predictions")
+            iterator = tqdm(dataloader, desc="Time series predictions")
         else:
-            iterator = data
+            iterator = dataloader
 
         preds = []
         labels = []
-        for data in iterator:
-            labels += [data["label"]]
+        for batch in iterator:
+            labels += [batch["label"]]
             with torch.no_grad():
-                preds += self.time_series_model.predict(data["sequence"])
+                preds += self.time_series_model.predict(batch["sequence"])
         preds = torch.cat(preds, 0)
         if len(preds.shape) == 1:
             preds = torch.unsqueeze(preds, 1)
@@ -56,5 +57,7 @@ class PredictionAnomalyDetector(AnomalyDetector):
         errors = torch.abs(labels - preds).cpu().detach().numpy()
 
         if return_predictions:
+            preds = self.time_series_model.preds_to_dataframe(
+                dataloader, preds.numpy())
             return errors, preds
         return errors

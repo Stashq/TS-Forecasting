@@ -2,10 +2,11 @@ from .base import AnomalyDetector
 from predpy.wrapper import TSModelWrapper
 import torch
 import numpy as np
+import pandas as pd
 from typing import Union, Tuple, List
 from tsad.distributor import Distributor, Gaussian
 from tqdm.auto import tqdm
-from torch.utils.data import DataLoader, Dataset
+from predpy.dataset import MultiTimeSeriesDataloader
 
 
 class ReconstructionAnomalyDetector(AnomalyDetector):
@@ -48,15 +49,16 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
 
     def dataset_forward(
         self,
-        data: Union[DataLoader, Dataset],
+        dataloader: MultiTimeSeriesDataloader,
         verbose: bool = True,
         return_predictions: bool = False
-    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
+        preds = self.time_series_model.get_dataset_predictions(dataloader)
         iterator = None
         if verbose:
-            iterator = tqdm(data, desc="Time series predictions")
+            iterator = tqdm(dataloader, desc="Time series predictions")
         else:
-            iterator = data
+            iterator = dataloader
 
         preds = []
         seqs = []
@@ -72,5 +74,7 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
         errors = torch.abs(seqs - preds).cpu().detach().numpy()
 
         if return_predictions:
+            preds = self.time_series_model.preds_to_dataframe(
+                dataloader, preds.numpy())
             return errors, preds
         return errors

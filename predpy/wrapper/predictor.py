@@ -8,8 +8,9 @@ from torch import nn, optim
 from typing import Dict
 from .base import TSModelWrapper
 from sklearn.base import TransformerMixin
-from torch.utils.data import DataLoader
+from predpy.dataset import MultiTimeSeriesDataloader
 from tqdm.auto import tqdm
+import numpy as np
 import pandas as pd
 import torch
 
@@ -48,7 +49,7 @@ class Predictor(TSModelWrapper):
 
     def get_dataset_predictions(
         self,
-        dataloader: DataLoader,
+        dataloader: MultiTimeSeriesDataloader,
         scaler: TransformerMixin = None
     ) -> pd.DataFrame:
         self.eval()
@@ -59,12 +60,19 @@ class Predictor(TSModelWrapper):
             preds += [self.predict(x)]
 
         preds = torch.cat(preds)
-        preds = preds.tolist()
+        preds = preds.numpy()
 
         if scaler is not None:
             preds =\
                 scaler.inverse_transform([preds]).tolist()
 
+        return self.preds_to_dataframe(dataloader, preds)
+
+    def preds_to_dataframe(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        preds: np.ndarray
+    ) -> pd.DataFrame:
         indices = dataloader.dataset.get_indices_like_recs(labels=True)
         columns = dataloader.dataset.target
         df = pd.DataFrame(preds, columns=columns, index=indices)

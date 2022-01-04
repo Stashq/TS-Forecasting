@@ -12,9 +12,9 @@ import pandas as pd
 import torch
 from torch import nn, optim
 
-from predpy.dataset import TimeSeriesDataset
+# from predpy.dataset import TimeSeriesDataset
 from predpy.wrapper import TSModelWrapper, Predictor
-from predpy.dataset import MultiTimeSeriesDataset
+# from predpy.dataset import MultiTimeSeriesDataset
 
 
 @dataclass
@@ -29,7 +29,6 @@ class DatasetParams:
     split_proportions: List[float]
     window_size: int
     batch_size: int
-    DatasetCls: TimeSeriesDataset = None
     drop_refill_pipeline: List[Tuple[Callable, Dict]] =\
         field(default_factory=list)
     preprocessing_pipeline: List[Tuple[Callable, Dict]] =\
@@ -41,9 +40,9 @@ class DatasetParams:
     true_values: List[float] = None
     name_: str = None
 
-    def __post_init__(self):
-        if self.DatasetCls is None:
-            self.DatasetCls = MultiTimeSeriesDataset
+    # def __post_init__(self):
+    #     if self.DatasetCls is None:
+    #         self.DatasetCls = MultiTimeSeriesDataset
 
 
 @dataclass

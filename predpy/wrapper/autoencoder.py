@@ -8,11 +8,12 @@ import torch
 from torch import nn, optim
 from typing import Dict, List
 from sklearn.base import TransformerMixin
-from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 import pandas as pd
+import numpy as np
 
 from .base import TSModelWrapper
+from predpy.dataset import MultiTimeSeriesDataloader
 
 
 class Autoencoder(TSModelWrapper):
@@ -57,7 +58,7 @@ class Autoencoder(TSModelWrapper):
 
     def get_dataset_predictions(
         self,
-        dataloader: DataLoader,
+        dataloader: MultiTimeSeriesDataloader,
         scaler: TransformerMixin = None
     ) -> pd.DataFrame:
         self.eval()
@@ -76,9 +77,20 @@ class Autoencoder(TSModelWrapper):
             preds =\
                 scaler.inverse_transform([preds]).tolist()
 
+        return self.preds_to_dataframe(dataloader, preds)
+
+    def encode(self, x):
+        return self.model.encode(x)
+
+    def preds_to_dataframe(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        preds: np.ndarray
+    ) -> pd.DataFrame:
+        if len(preds.shape) == 3:
+            preds = preds.reshape(preds.shape[0] * preds.shape[2], -1)
         ids = dataloader.dataset.get_indices_like_recs(labels=False)
         ids = pd.concat(ids)
-        # ids = pd.concat([ids.to_series() for ids in ids])
         columns = dataloader.dataset.target
         preds_df = pd.DataFrame(preds, columns=columns, index=ids)
         df = pd.DataFrame(ids.unique(), columns=["datetime"])\
@@ -93,6 +105,3 @@ class Autoencoder(TSModelWrapper):
             df[col + "_q100"] = grouped.quantile(1.0)
 
         return df
-
-    def encode(self, x):
-        return self.model.encode(x)

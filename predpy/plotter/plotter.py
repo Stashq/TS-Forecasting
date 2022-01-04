@@ -38,50 +38,66 @@ def _reconstruction_quantiles_to_scatters(
     ]
 
     # quantiles: 25% - 75%
-    data += [
-        go.Scatter(
-            x=ts.index.tolist() + ts.index.tolist(),
-            y=pd.concat([ts[col + "_q075"], ts[col + "_q025"]]),
-            fill='toself',
-            fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
-            line=dict(color='rgba(255, 255, 255, 0)'),
-            hoverinfo="skip",
-            legendgroup=str(group_id),
-            name="25% - 75%"
-        )
-        for col in columns]
+    for col in columns:
+        data += [
+            go.Scatter(
+                x=ts.index.tolist(),
+                y=ts[col + "_q025"],
+                line=dict(color='rgba(255, 255, 255, 0)'),
+                hoverinfo="skip",
+                showlegend=False,
+                legendgroup=str(group_id),
+                name="25%"
+            ),
+            go.Scatter(
+                x=ts.index.tolist(),
+                y=ts[col + "_q075"],
+                fill='tonexty',
+                fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
+                line=dict(color='rgba(255, 255, 255, 0)'),
+                hoverinfo="skip",
+                showlegend=False,
+                legendgroup=str(group_id),
+                name="75%"
+            ),
+        ]
 
     # quantiles: 0% - 100%
-    data += [
-        go.Scatter(
-            x=ts.index.tolist() + ts.index.tolist(),
-            y=pd.concat([ts[col + "_q100"], ts[col + "_q000"]]),
-            fill='toself',
-            fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.2)',
-            line=dict(color='rgba(255, 255, 255, 0)'),
-            hoverinfo="skip",
-            legendgroup=str(group_id),
-            name="0% - 100%"
-        )
-        for col in columns]
+    for col in columns:
+        data += [
+            go.Scatter(
+                x=ts.index.tolist(),
+                y=ts[col + "_q000"],
+                line=dict(color='rgba(255, 255, 255, 0)'),
+                hoverinfo="skip",
+                showlegend=False,
+                legendgroup=str(group_id),
+                name="0%"
+            ),
+            go.Scatter(
+                x=ts.index.tolist(),
+                y=ts[col + "_q100"],
+                fill='tonexty',
+                fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
+                line=dict(color='rgba(255, 255, 255, 0)'),
+                hoverinfo="skip",
+                showlegend=False,
+                legendgroup=str(group_id),
+                name="100%"
+            ),
+        ]
     return data
 
 
 def _preds_to_scatters(
     ts: pd.Series, name: str, version: str = ""
 ) -> List[go.Scatter]:
-    if len(ts.columns) > 1:
-        data = [
-            go.Scatter(
-                x=ts.index, y=ts[col], connectgaps=False,
-                name=name + f"-{col}" + version)
-            for col in ts.columns
-        ]
-    else:
-        data = [go.Scatter(
-            x=ts.index, y=ts.iloc[:, 0], connectgaps=False,
-            name=name + version)]
-    return data
+    return [
+        go.Scatter(
+            x=ts.index, y=ts[col], connectgaps=False,
+            name=name + f"-{col}" + version)
+        for col in ts.columns
+    ]
 
 
 def ts_to_plotly_data(
@@ -89,17 +105,17 @@ def ts_to_plotly_data(
     name: str,
     version: str = "",
     set_gaps: bool = True,
-    is_autoencoder: bool = False
+    is_ae: bool = False
 ) -> List[go.Scatter]:
     if set_gaps:
         ts = _set_gaps(ts)
 
     if isinstance(ts, pd.Series):
         data = _series_to_scatter(ts, name=name, version=version)
-    elif isinstance(ts, pd.DataFrame) and is_autoencoder:
+    elif isinstance(ts, pd.DataFrame) and is_ae:
         data = _reconstruction_quantiles_to_scatters(
             ts, name=name, version=version)
-    elif isinstance(ts, pd.DataFrame) and is_autoencoder is False:
+    elif isinstance(ts, pd.DataFrame) and is_ae is False:
         data = _preds_to_scatters(ts, name=name, version=version)
     return data
 
@@ -350,16 +366,16 @@ def preds_and_true_vals_to_scatter_data(
         are_ae = [False]*len(predictions)
 
     data = ts_to_plotly_data(
-        true_vals, "true_vals", version, is_autoencoder=False)
+        true_vals, "true_vals", version, is_ae=False)
 
     for i, (_, row) in enumerate(predictions.iterrows()):
         data += ts_to_plotly_data(
             row["predictions"], models_names[i], version,
-            is_autoencoder=are_ae[i])
+            is_ae=are_ae[i])
     return data
 
 
-def _set_gaps(ts: Union[pd.Series, pd.DataFrame]):
+def _set_gaps(ts: Union[pd.Series, pd.DataFrame, List[pd.DataFrame]]):
     ts = _split_ts_where_breaks(ts)
     ts = _concat_dfs_with_gaps(ts)
     return ts
@@ -498,3 +514,63 @@ def plot_aggregated_predictions(
         plot(fig, filename=file_path)
     else:
         fig.show()
+
+
+def plot_anomalies(
+    time_series: Union[pd.Series, pd.DataFrame],
+    pred_anomalies: Union[pd.Series, pd.DataFrame],
+    true_anomalies: Union[pd.Series, pd.DataFrame] = None,
+    predictions: pd.DataFrame = None,
+    # target: str = None,
+    # scaler: TransformerMixin = None,
+    is_ae: bool = False,
+    title: str = "Finding anomalies",
+    file_path: str = None
+):
+    data = ts_to_plotly_data(time_series, "True values")
+    data += _anomalies_to_scatter(
+        anomalies=pred_anomalies, color='#9467bd',
+        label="predicted anomalies")
+
+    if predictions is not None:
+        data += ts_to_plotly_data(predictions, "Predictions", is_ae=is_ae)
+    if true_anomalies is not None:
+        data += _anomalies_to_scatter(
+            anomalies=pred_anomalies, color='#d62728',
+            label="true anomalies"
+        )
+    #     data += preds_and_true_vals_to_scatter_data(
+    #         true_vals=time_series, predictions=predictions, target=target,
+    #         models_names=[model_name], scaler=scaler, are_ae=[is_ae])
+    # else:
+    #     data += preds_and_true_vals_to_scatter_data(
+    #         true_vals=time_series, predictions=predictions, target=target,
+    #         models_names=[model_name], scaler=scaler, are_ae=[is_ae])
+    layout = go.Layout(
+        title=title,
+        yaxis=dict(title='values'),
+        xaxis=dict(title='dates')
+    )
+
+    fig = go.Figure(data=data, layout=layout)
+    if file_path is not None:
+        plot(fig, filename=file_path)
+    else:
+        fig.show()
+
+
+def _anomalies_to_scatter(
+    anomalies: Union[pd.DataFrame, pd.Series],
+    color: str = '#9467bd',
+    label: str = ""
+) -> List[go.Scatter]:
+    return [
+        go.Scatter(
+            x=anomalies.index,
+            y=anomalies[col],
+            mode='markers', name=col + " " + label,
+            marker=dict(
+                line=dict(width=5, color=color),
+                symbol='x-thin'))
+        for col in anomalies.columns
+    ]

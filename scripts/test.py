@@ -2,12 +2,12 @@
 import sys
 sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
-from predpy.dataset import MultiTimeSeriesDataset
+from predpy.dataset import MultiTimeSeriesDataset, MultiTimeSeriesDataloader
 from predpy.data_module import MultiTimeSeriesModule
 from predpy.wrapper import Autoencoder, Predictor, VAE
 from predpy.experimentator import (
-    DatasetParams, ModelParams, ExperimentatorPlot,
-    Experimentator, load_experimentator, plot_aggregated_predictions)
+    DatasetParams, ModelParams,
+    Experimentator, load_experimentator)
 from predpy.preprocessing import set_index
 from predpy.preprocessing import moving_average
 from predpy.preprocessing import (
@@ -102,20 +102,20 @@ models_params = [
     #     name_="LSTM_h200_l2", cls_=RNN.LSTM,
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 200, "n_layers": 2}),
-    # ModelParams(
-    #     name_="LSTM_h400_l4", cls_=RNN.LSTM,
-    #     init_params={
-    #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 4}),
+    ModelParams(
+        name_="LSTM_h400_l4", cls_=RNN.LSTM,
+        init_params={
+            "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 4}),
     # ModelParams(
     #     name_="LSTMAutoencoder_h400_l1", cls_=LSTMAutoencoder,
     #     init_params=dict(
     #         c_in=window_size, h_size=400, n_layers=1),
     #     WrapperCls=Autoencoder),
-    ModelParams(
-        name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
-        init_params=dict(
-            c_in=window_size, h_size=200, n_layers=1),
-        WrapperCls=VAE),
+    # ModelParams(
+    #     name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
+    #     init_params=dict(
+    #         c_in=window_size, h_size=200, n_layers=1),
+    #     WrapperCls=VAE),
 ]
 
 # TODO: zainicjalizować model lstm_vae i opakowac go w VAE; stworzyc model, ktory dostosuje sie do urzadzenia
@@ -145,8 +145,14 @@ exp = Experimentator(
 
 # exp.run_experiments(
 #     experiments_path="./saved_experiments", safe=False, continue_run=False)
+
+# vae example
 exp = load_experimentator(
     "./saved_experiments/2022-01-02_13:01:41.pkl")
+
+# lstm example
+# exp = load_experimentator(
+#     "./saved_experiments/2022-01-04_00:20:01.pkl")
 
 # exp.plot_predictions(0)
 
@@ -242,42 +248,41 @@ model2 = exp.load_pl_model(
     dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1"
 )
 
-from tsad.distributor import Gaussian
 ad2 = ReconstructionAnomalyDetector(
-    model2, target_cols_ids=tsm.target_cols_ids())  # , distributor=Gaussian())
+    model2, target_cols_ids=tsm.target_cols_ids())
 
 
 ad2.fit(
-    train_data=DataLoader(
-        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+    train_data=MultiTimeSeriesDataloader(
+        normal_dfs, tsm.window_size, tsm.target,
         batch_size=tsm.batch_size),
-    anomaly_data=DataLoader(
-        MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
+    anomaly_data=MultiTimeSeriesDataloader(
+        anomaly_dfs, tsm.window_size, tsm.target,
         batch_size=tsm.batch_size),
-    normal_data=DataLoader(
-        MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+    normal_data=MultiTimeSeriesDataloader(
+        normal_dfs, tsm.window_size, tsm.target,
         batch_size=tsm.batch_size),
     class_weight=None, verbose=True, plot_time_series=True
 )
 
-ad2.find_anomalies(tsm.test_dataloader())
+# ad2.find_anomalies(tsm.test_dataloader())
 
 # model = exp.load_pl_model(
 #     model_idx=0,
-#     dir_path="./checkpoints/household_power_consumption/LSTM_h200_l1"
+#     dir_path="./checkpoints/household_power_consumption/LSTM_h400_l4"
 # )
 
 # ad = PredictionAnomalyDetector(model)
 
 # ad.fit(
-#     train_data=DataLoader(
-#         MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+#     train_data=MultiTimeSeriesDataloader(
+#         normal_dfs, tsm.window_size, tsm.target,
 #         batch_size=tsm.batch_size),
-#     anomaly_data=DataLoader(
-#         MultiTimeSeriesDataset(anomaly_dfs, tsm.window_size, tsm.target),
+#     anomaly_data=MultiTimeSeriesDataloader(
+#         anomaly_dfs, tsm.window_size, tsm.target,
 #         batch_size=tsm.batch_size),
-#     normal_data=DataLoader(
-#         MultiTimeSeriesDataset(normal_dfs, tsm.window_size, tsm.target),
+#     normal_data=MultiTimeSeriesDataloader(
+#         normal_dfs, tsm.window_size, tsm.target,
 #         batch_size=tsm.batch_size),
 #     class_weight=None, verbose=True, plot_time_series=True
 # )

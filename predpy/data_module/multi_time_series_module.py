@@ -6,11 +6,12 @@ Split data between training, validation, test datasets and stores them using
 *TimeSeriesDataset* classes.
 """
 import math
-from typing import Union, Tuple, List
-from pytorch_lightning import LightningDataModule
-from predpy.dataset import MultiTimeSeriesDataset, MultiTimeSeriesDataloader
+import numpy as np
 import pandas as pd
 from string import Template
+from typing import Union, Tuple, List
+from pytorch_lightning import LightningDataModule
+from predpy.dataset import MultiTimeSeriesDataloader
 
 NOT_ENOUGH_RECORDS = Template("Not enough records. \
 If $n_splits dataset types, dataset should\
@@ -84,9 +85,9 @@ class MultiTimeSeriesModule(LightningDataModule):
         self._ending_seqs_rec_ids = self._get_ending_sequences_rec_ids(
             sequences, window_size)
 
-        self.train_dataset = None
-        self.val_dataset = None
-        self.test_dataset = None
+        self.train_seqs = None
+        self.val_seqs = None
+        self.test_seqs = None
 
     def copy(self):
         return MultiTimeSeriesModule(
@@ -355,22 +356,15 @@ class MultiTimeSeriesModule(LightningDataModule):
         return result
 
     def setup(self, stage: str = None):
-        start, end = self.train_range
-        seqs = self.get_recs_range(start, end)
-        self.train_dataset = MultiTimeSeriesDataset(
-            seqs, self.window_size, self.target)
-        start, end = self.val_range
-        seqs = self.get_recs_range(start, end)
-        self.val_dataset = MultiTimeSeriesDataset(
-            seqs, self.window_size, self.target)
-        start, end = self.test_range
-        seqs = self.get_recs_range(start, end)
-        self.test_dataset = MultiTimeSeriesDataset(
-            seqs, self.window_size, self.target)
+        self.train_seqs = self.get_recs_range(*self.train_range)
+        self.val_seqs = self.get_recs_range(*self.val_range)
+        self.test_seqs = self.get_recs_range(*self.test_range)
 
     def train_dataloader(self):
         return MultiTimeSeriesDataloader(
-            self.train_dataset,
+            self.train_seqs,
+            window_size=self.window_size,
+            target=self.target,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=8
@@ -378,7 +372,9 @@ class MultiTimeSeriesModule(LightningDataModule):
 
     def val_dataloader(self):
         return MultiTimeSeriesDataloader(
-            self.val_dataset,
+            self.val_seqs,
+            window_size=self.window_size,
+            target=self.target,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=4
@@ -386,7 +382,9 @@ class MultiTimeSeriesModule(LightningDataModule):
 
     def test_dataloader(self):
         return MultiTimeSeriesDataloader(
-            self.test_dataset,
+            self.test_seqs,
+            window_size=self.window_size,
+            target=self.target,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=4
@@ -480,3 +478,30 @@ class MultiTimeSeriesModule(LightningDataModule):
             self.sequences[0].columns.get_loc(t)
             for t in self.target
         ]
+
+    def global_ids_to_data(self, global_ids: List[int]):
+        seq_ids, rec_ids = list(zip(*[
+            self._global_id_to_seq_rec_id(idx)
+            for idx in global_ids
+        ]))
+
+        res = None
+        for seq_idx in set(seq_ids):
+            filter_ = np.argwhere(np.array(seq_ids) == seq_idx)
+            res += [self._rec_ids_to_data(rec_ids[filter_])]
+
+        return res
+
+    def _rec_ids_to_data(self, rec_ids: List[int], seq_id: int):
+        rec_ids = rec_ids.sort()
+        data_ids = []
+        s_start = rec_ids[0]
+        s_end = rec_ids[0] + self.window_size
+        for rec_idx in rec_ids[1:]:
+            if s_end < rec_idx:
+                data_ids += list(range(s_start, s_end))
+                s_start = rec_idx
+            s_end = rec_idx + self.window_size
+        data_ids += list(range(s_start, s_end))
+
+        return self.sequences[seq_id].iloc[data_ids][self.target]

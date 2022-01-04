@@ -10,7 +10,7 @@ from torch import nn, optim
 from typing import Dict
 from abc import ABC, abstractmethod
 from sklearn.base import TransformerMixin
-from torch.utils.data import DataLoader
+from predpy.dataset import MultiTimeSeriesDataloader
 import torch
 
 
@@ -86,7 +86,15 @@ class TSModelWrapper(LightningModule, ABC):
     @abstractmethod
     def get_dataset_predictions(
         self,
-        dataloader: DataLoader,
+        dataloader: MultiTimeSeriesDataloader,
         scaler: TransformerMixin = None
+    ) -> pd.DataFrame:
+        pass
+
+    @abstractmethod
+    def preds_to_dataframe(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        preds: torch.Tensor
     ) -> pd.DataFrame:
         pass

@@ -189,8 +189,7 @@ class Experimentator:
             target=ds_params.target,
             split_proportions=ds_params.split_proportions,
             window_size=int(ds_params.window_size),
-            batch_size=int(ds_params.batch_size),
-            DatasetCls=ds_params.DatasetCls
+            batch_size=int(ds_params.batch_size)
         )
         if setup:
             tsm.setup()

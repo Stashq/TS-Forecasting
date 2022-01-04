@@ -4,6 +4,7 @@ Samples shares same memory, so it is strongly advised not to change them during
 usage. Created object is much lighter than *TimeSeriesRecodsDataset* object.
 """
 import torch
+import numpy as np
 import pandas as pd
 from .time_series_dataset import TimeSeriesDataset
 from typing import Dict, List, Tuple, Union
@@ -300,7 +301,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         """
         indices = []
         if labels:
-            indices = self.get_labels()
+            indices = self.get_labels().index.to_series()
         else:
             indices = []
             for seq in self.sequences:
@@ -320,13 +321,47 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             target=self.target[:]
         )
 
+    def global_ids_to_data(self, global_ids: List[int]):
+        if len(global_ids) == 0:
+            return pd.DataFrame(columns=self.target)
+
+        seq_ids, rec_ids = list(zip(*[
+            self._global_id_to_seq_rec_id(idx)
+            for idx in global_ids
+        ]))
+
+        res = []
+        for seq_idx in set(seq_ids):
+            filter_ = np.argwhere(np.array(seq_ids) == seq_idx).T[0].tolist()
+            res += [self._rec_ids_to_data(
+                np.array(rec_ids)[filter_], seq_idx)]
+        res = pd.concat(res)
+        return res
+
+    def _rec_ids_to_data(self, rec_ids: List[int], seq_id: int):
+        rec_ids.sort()
+        data_ids = []
+        s_start = rec_ids[0]
+        s_end = rec_ids[0] + self.window_size
+        for rec_idx in rec_ids[1:]:
+            if s_end < rec_idx:
+                data_ids += list(range(s_start, s_end))
+                s_start = rec_idx
+            s_end = rec_idx + self.window_size
+        data_ids += list(range(s_start, s_end))
+
+        return self.sequences[seq_id].iloc[data_ids][self.target]
+
 
 class MultiTimeSeriesDataloader(DataLoader):
     def __init__(
         self,
-        dataset: MultiTimeSeriesDataset,
+        sequences: List[pd.DataFrame],
+        window_size: int,
+        target: Union[str, List[str]],
         *args, **kwargs
     ):
-        if not isinstance(dataset, MultiTimeSeriesDataset):
-            raise ValueError("Dataset has to be MultiTimeSeriesDataset type.")
-        super().__init__(dataset, *args, **kwargs)
+        super().__init__(
+            MultiTimeSeriesDataset(
+                sequences=sequences, window_size=window_size, target=target
+            ), *args, **kwargs)

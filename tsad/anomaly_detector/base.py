@@ -1,24 +1,26 @@
 from tsad.distributor import Distributor, Gaussian
 from predpy.wrapper import TSModelWrapper
+from predpy.dataset import MultiTimeSeriesDataloader
+from predpy.wrapper import Autoencoder
+from predpy.plotter.plotter import plot_anomalies
 
 import torch
 import numpy as np
 import pandas as pd
 from abc import abstractmethod
 from typing import Union, Tuple, Dict, List
-from torch.utils.data import DataLoader, Dataset
 from sklearn.linear_model import LogisticRegression
 from string import Template
 import plotly as pl
 import plotly.graph_objs as go
-from plotly.offline import plot
+# from plotly.offline import plot
 from plotly.subplots import make_subplots
 from scipy.stats import norm
 # import plotly.figure_factory as ff
 from sklearn.metrics import confusion_matrix
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
-Allowed types: torch.Tensor, DataLoader.")
+Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
 
 
 class AnomalyDetector:
@@ -44,24 +46,24 @@ class AnomalyDetector:
     @abstractmethod
     def dataset_forward(
         self,
-        data: Union[DataLoader, Dataset],
+        data: MultiTimeSeriesDataloader,
         verbose: bool = True,
         return_predictions: bool = False
-    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
         pass
 
     def _any_forward(
         self,
-        data: Union[torch.Tensor, DataLoader, Dataset],
+        data: Union[torch.Tensor, MultiTimeSeriesDataloader],
         verbose: bool = False,
         return_predictions: bool = False
-    ) -> Union[np.ndarray, Tuple[np.ndarray]]:
+    ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
         result = None
         if isinstance(data, torch.Tensor):
             result = self.forward(
                 data["sequence"], data["label"],
                 return_predictions=return_predictions)
-        elif isinstance(data, DataLoader) or isinstance(data, Dataset):
+        elif isinstance(data, MultiTimeSeriesDataloader):
             result = self.dataset_forward(
                 data, verbose=verbose,
                 return_predictions=return_predictions)
@@ -73,7 +75,7 @@ class AnomalyDetector:
 
     def fit_distributor(
         self,
-        data: Union[torch.Tensor, DataLoader, Dataset],
+        data: Union[torch.Tensor, MultiTimeSeriesDataloader],
         verbose: bool = False
     ):
         result = self._any_forward(data, verbose)
@@ -81,8 +83,8 @@ class AnomalyDetector:
 
     def fit_threshold(
         self,
-        normal_data: Union[torch.Tensor, DataLoader, Dataset],
-        anomaly_data: Union[torch.Tensor, DataLoader, Dataset],
+        normal_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
+        anomaly_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
         class_weight: Dict = {0: 0.05, 1: 0.95},
         verbose: bool = False,
         plot_distribution: bool = False,
@@ -93,9 +95,9 @@ class AnomalyDetector:
 
         Parameters
         ----------
-        normal_data : Union[torch.Tensor, DataLoader, Dataset]
+        normal_data : Union[torch.Tensor, MultiTimeSeriesDataloader]
             Data that is not anomaly.
-        anomaly_data : Union[torch.Tensor, DataLoader, Dataset]
+        anomaly_data : Union[torch.Tensor, MultiTimeSeriesDataloader]
             Anomalies.
         class_weight : Dict, optional
             Normal data (0) and anomaly (1) weights,
@@ -142,9 +144,9 @@ class AnomalyDetector:
 
     def fit(
         self,
-        train_data: Union[torch.Tensor, DataLoader, Dataset],
-        anomaly_data: Union[torch.Tensor, DataLoader, Dataset],
-        normal_data: Union[torch.Tensor, DataLoader, Dataset] = None,
+        train_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
+        anomaly_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
+        normal_data: Union[torch.Tensor, MultiTimeSeriesDataloader] = None,
         class_weight: Dict = {0: 0.05, 1: 0.95},
         verbose: bool = True,
         plot_distribution: bool = False,
@@ -152,12 +154,14 @@ class AnomalyDetector:
     ):
         self.fit_distributor(train_data, verbose)
         self.fit_threshold(
-            normal_data, anomaly_data, class_weight, verbose,
-            plot_distribution, plot_time_series)
+            normal_data=normal_data, anomaly_data=anomaly_data,
+            class_weight=class_weight, verbose=verbose,
+            plot_distribution=plot_distribution,
+            plot_time_series=plot_time_series)
 
     def find_anomalies(
         self,
-        data: DataLoader,
+        data: MultiTimeSeriesDataloader,
         classes_: List[int] = None,
         return_indices: bool = False,
         verbose: bool = True,
@@ -269,71 +273,94 @@ class AnomalyDetector:
 
     def plot_with_time_series(
         self,
-        time_series: DataLoader,
+        time_series: MultiTimeSeriesDataloader,
         pred_anomalies_ids: List[int],
         true_anomalies_ids: List[int] = None,
-        model_preds: List[torch.Tensor] = None,
-        title: str = None,
+        # model_preds: List[torch.Tensor] = None,
+        model_preds: pd.DataFrame = None,
+        title: str = "Finding anomalies",
         file_path: str = None
     ):
-        labels = time_series.dataset.get_labels()
-        dates = labels.index
-        target = labels.columns
-
-        true_series = time_series.dataset.sequences
-        if isinstance(true_series, list):
-            true_series = pd.concat(true_series)
-
-        data = []
-        for col_name in target:
-            data += [go.Scatter(
-                x=true_series.index,
-                y=true_series[col_name],
-                connectgaps=False,
-                name=col_name)]
-
-        for col_name in target:
-            data += [go.Scatter(
-                x=dates[pred_anomalies_ids],
-                y=labels[col_name][pred_anomalies_ids],
-                mode='markers', name="Predicted anomalies",
-                marker=dict(
-                    line=dict(width=5, color='#9467bd'),
-                    symbol='x-thin')
-            )]
-
-        if model_preds is not None:
-            model_preds = np.array([
-                pred.cpu().detach().tolist()
-                for pred in model_preds
-            ])
-            for i, col_name in enumerate(target):
-                data += [go.Scatter(
-                    x=dates, y=model_preds[:, i].tolist(), connectgaps=False,
-                    name=col_name + "_pred")]
-
-        if true_anomalies_ids is not None:
-            for col_name in target:
-                data += [go.Scatter(
-                    x=dates[true_anomalies_ids],
-                    y=labels[col_name][true_anomalies_ids],
-                    mode='markers', name="True anomalies",
-                    marker=dict(
-                        line=dict(width=5, color='#d62728'),
-                        symbol='x-thin')
-                )]
-
-        layout = go.Layout(
-            title=title,
-            yaxis=dict(title="values"),
-            xaxis=dict(title='dates')
-        )
-
-        fig = go.Figure(data=data, layout=layout)
-        if file_path is not None:
-            plot(fig, filename=file_path)
+        if issubclass(type(self.time_series_model), Autoencoder):
+            pred_anomalies = time_series.dataset.global_ids_to_data(
+                pred_anomalies_ids)
         else:
-            fig.show()
+            pred_anomalies = time_series.dataset.get_labels().iloc[
+                pred_anomalies_ids]
+
+        true_anomalies = None
+        if true_anomalies_ids is not None:
+            true_anomalies = time_series.dataset.global_ids_to_data(
+                true_anomalies_ids)
+
+        ts = pd.concat(time_series.dataset.sequences)[
+            time_series.dataset.target]
+        plot_anomalies(
+            time_series=ts,
+            pred_anomalies=pred_anomalies,
+            true_anomalies=true_anomalies,
+            predictions=model_preds,
+            is_ae=issubclass(type(self.time_series_model), Autoencoder),
+            title=title, file_path=file_path
+        )
+        # labels = time_series.dataset.get_labels()
+        # dates = labels.index
+        # target = labels.columns
+
+        # true_series = time_series.dataset.sequences
+        # if isinstance(true_series, list):
+        #     true_series = pd.concat(true_series)
+
+        # data = []
+        # for col_name in target:
+        #     data += [go.Scatter(
+        #         x=true_series.index,
+        #         y=true_series[col_name],
+        #         connectgaps=False,
+        #         name=col_name)]
+
+        # for col_name in target:
+        #     data += [go.Scatter(
+        #         x=dates[pred_anomalies_ids],
+        #         y=labels[col_name][pred_anomalies_ids],
+        #         mode='markers', name="Predicted anomalies",
+        #         marker=dict(
+        #             line=dict(width=5, color='#9467bd'),
+        #             symbol='x-thin')
+        #     )]
+
+        # if model_preds is not None:
+        #     model_preds = np.array([
+        #         pred.cpu().detach().tolist()
+        #         for pred in model_preds
+        #     ])
+        #     for i, col_name in enumerate(target):
+        #         data += [go.Scatter(
+        #             x=dates, y=model_preds[:, i].tolist(), connectgaps=False,
+        #             name=col_name + "_pred")]
+
+        # if true_anomalies_ids is not None:
+        #     for col_name in target:
+        #         data += [go.Scatter(
+        #             x=dates[true_anomalies_ids],
+        #             y=labels[col_name][true_anomalies_ids],
+        #             mode='markers', name="True anomalies",
+        #             marker=dict(
+        #                 line=dict(width=5, color='#d62728'),
+        #                 symbol='x-thin')
+        #         )]
+
+        # layout = go.Layout(
+        #     title=title,
+        #     yaxis=dict(title="values"),
+        #     xaxis=dict(title='dates')
+        # )
+
+        # fig = go.Figure(data=data, layout=layout)
+        # if file_path is not None:
+        #     plot(fig, filename=file_path)
+        # else:
+        #     fig.show()
 
         # dane:
         # seria czasowa, wyniki wykrywania anomalii
