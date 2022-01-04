@@ -574,3 +574,38 @@ def _anomalies_to_scatter(
                 symbol='x-thin'))
         for col in anomalies.columns
     ]
+
+
+def plot_3d_embeddings(
+    embs_3d: np.ndarray,
+    are_anomalies: List[int] = None,
+    title: str = "Autoencoder embeddings",
+    file_path: str = None
+):
+    if len(embs_3d.shape) != 2 or embs_3d.shape[1] != 3:
+        raise ValueError(
+            "Wrong embeddings shape. Expected (n, 3), got "
+            + str(embs_3d.shape))
+
+    data = [go.Scatter3d(
+        x=embs_3d[..., 0].tolist(),
+        y=embs_3d[..., 1].tolist(),
+        z=embs_3d[..., 2].tolist(),
+        mode='markers',
+        marker=dict(
+            size=12,
+            color=are_anomalies,
+            # colorscale='Viridis',   # choose a colorscale
+            # opacity=0.8
+        )
+    )]
+
+    layout = go.Layout(
+        title=title,
+    )
+
+    fig = go.Figure(data=data, layout=layout)
+    if file_path is not None:
+        plot(fig, filename=file_path)
+    else:
+        fig.show()

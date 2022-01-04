@@ -1,5 +1,6 @@
 # flake8: noqa
 import sys
+
 sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
 from predpy.dataset import MultiTimeSeriesDataset, MultiTimeSeriesDataloader
@@ -265,7 +266,8 @@ ad2.fit(
     normal_data=MultiTimeSeriesDataloader(
         normal_dfs, tsm.window_size, tsm.target,
         batch_size=tsm.batch_size),
-    class_weight=None, verbose=True, plot_time_series=True
+    class_weight=None, verbose=True, plot_time_series=True,
+    plot_embeddings=True,
 )
 
 # ad2.find_anomalies(tsm.test_dataloader())

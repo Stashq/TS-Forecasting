@@ -2,7 +2,7 @@ from tsad.distributor import Distributor, Gaussian
 from predpy.wrapper import TSModelWrapper
 from predpy.dataset import MultiTimeSeriesDataloader
 from predpy.wrapper import Autoencoder
-from predpy.plotter.plotter import plot_anomalies
+from predpy.plotter.plotter import plot_anomalies, plot_3d_embeddings
 
 import torch
 import numpy as np
@@ -18,6 +18,7 @@ from plotly.subplots import make_subplots
 from scipy.stats import norm
 # import plotly.figure_factory as ff
 from sklearn.metrics import confusion_matrix
+from sklearn.decomposition import PCA
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
 Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
@@ -88,7 +89,8 @@ class AnomalyDetector:
         class_weight: Dict = {0: 0.05, 1: 0.95},
         verbose: bool = False,
         plot_distribution: bool = False,
-        plot_time_series: bool = False
+        plot_time_series: bool = False,
+        plot_embeddings: bool = False
     ):
         """Fits logistic regressor on distributor probabilities of normal
         and anomaly data.
@@ -141,6 +143,9 @@ class AnomalyDetector:
                 model_preds=a_preds,
                 title="Detecting anomalies on anomaly data"
             )
+        if plot_embeddings:
+            self.plot_embeddings(
+                np.concatenate([n_res, a_res], axis=0), classes)
 
     def fit(
         self,
@@ -150,14 +155,16 @@ class AnomalyDetector:
         class_weight: Dict = {0: 0.05, 1: 0.95},
         verbose: bool = True,
         plot_distribution: bool = False,
-        plot_time_series: bool = False
+        plot_time_series: bool = False,
+        plot_embeddings: bool = False
     ):
         self.fit_distributor(train_data, verbose)
         self.fit_threshold(
             normal_data=normal_data, anomaly_data=anomaly_data,
             class_weight=class_weight, verbose=verbose,
             plot_distribution=plot_distribution,
-            plot_time_series=plot_time_series)
+            plot_time_series=plot_time_series,
+            plot_embeddings=plot_embeddings)
 
     def find_anomalies(
         self,
@@ -303,6 +310,17 @@ class AnomalyDetector:
             is_ae=issubclass(type(self.time_series_model), Autoencoder),
             title=title, file_path=file_path
         )
+
+    def plot_embeddings(
+        self,
+        embs: np.ndarray,
+        classes: List[int] = None
+    ):
+        if not issubclass(type(self.time_series_model), Autoencoder):
+            print("Cannot plot embeddings for model other than Autoencoder.")
+        pca = PCA(n_components=3)
+        embs_3d = pca.fit_transform(embs)
+        plot_3d_embeddings(embs_3d, classes)
 
         # dane:
         # seria czasowa, wyniki wykrywania anomalii
