@@ -1,5 +1,5 @@
 from .base import AnomalyDetector
-from predpy.wrapper import TSModelWrapper
+from predpy.wrapper import Autoencoder
 import torch
 import numpy as np
 import pandas as pd
@@ -9,13 +9,16 @@ from tqdm.auto import tqdm
 from predpy.dataset import MultiTimeSeriesDataloader
 
 
-class ReconstructionAnomalyDetector(AnomalyDetector):
+class EmbeddingAnomalyDetector(AnomalyDetector):
     def __init__(
         self,
-        time_series_model: TSModelWrapper,
+        time_series_model: Autoencoder,
         distributor: Distributor = Gaussian(),
         target_cols_ids: List[int] = None,
     ):
+        if not issubclass(type(time_series_model), Autoencoder):
+            raise ValueError(
+                "Time series model has to inherit from Autoencoder")
         super().__init__(
             time_series_model, distributor)
         self.target_cols_ids = target_cols_ids
@@ -25,6 +28,7 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
             device = self.time_series_model.get_device()
         else:
             device = "cpu"
+
         if self.target_cols_ids is None:
             seqs = batch["sequence"]
         else:
@@ -35,23 +39,18 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
 
     def forward(
         self,
-        records: torch.Tensor,
-        return_predictions: bool = False
+        records: torch.Tensor
     ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         with torch.no_grad():
             seqs = self.get_seqences(records)
-            preds = self.time_series_model.predict(seqs)
-            errors = torch.abs(seqs - preds).cpu().detach().numpy()
+            embs = self.time_series_model.encode(seqs).cpu().detach().numpy()
 
-        if return_predictions:
-            return errors, preds
-        return errors
+        return embs
 
     def dataset_forward(
         self,
         dataloader: MultiTimeSeriesDataloader,
         verbose: bool = True,
-        return_predictions: bool = False
     ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
         iterator = None
         if verbose:
@@ -59,21 +58,10 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
         else:
             iterator = dataloader
 
-        preds = []
-        seqs = []
+        embs = []
         for batch in iterator:
             batch_seqs = self.get_seqences(batch)
-            seqs += [batch_seqs]
             with torch.no_grad():
-                preds += self.time_series_model.predict(batch_seqs)
-        preds = torch.cat(preds, 0)
-        if len(preds.shape) == 2:
-            preds = preds.unsqueeze(dim=1)
-        seqs = torch.cat(seqs, 0)
-        errors = torch.abs(seqs - preds).cpu().detach().numpy()
+                embs += self.time_series_model.encode(batch_seqs)
 
-        if return_predictions:
-            preds = self.time_series_model.preds_to_dataframe(
-                dataloader, preds.numpy())
-            return errors, preds
-        return errors
+        return embs

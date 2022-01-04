@@ -70,13 +70,17 @@ class LSTMVAE(nn.Module):
         z = z_mu + eps * torch.exp(z_log_sig/2.0)
         return z
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         z, z_mu, z_log_sig = self.encode(x)
         x_tilda = self.decoder(z)
         return (x_tilda, z_mu, z_log_sig)
 
-    def encode(self, x):
+    def encode(self, x: torch.Tensor, return_all: bool = False):
         emb = self.encoder(x)
         z_mu, z_log_sig = self.mu_dense(emb), self.log_sig_dense(emb)
         z = self.reparametrization(z_mu, z_log_sig)
-        return z, z_mu, z_log_sig
+        if return_all:
+            res = z, z_mu, z_log_sig
+        else:
+            res = z
+        return res
