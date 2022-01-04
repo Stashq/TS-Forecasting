@@ -39,18 +39,22 @@ class EmbeddingAnomalyDetector(AnomalyDetector):
 
     def forward(
         self,
-        records: torch.Tensor
+        records: torch.Tensor,
+        return_predictions: bool = False
     ) -> Union[np.ndarray, Tuple[np.ndarray]]:
         with torch.no_grad():
             seqs = self.get_seqences(records)
             embs = self.time_series_model.encode(seqs).cpu().detach().numpy()
 
+        if return_predictions:
+            return embs, None
         return embs
 
     def dataset_forward(
         self,
         dataloader: MultiTimeSeriesDataloader,
         verbose: bool = True,
+        return_predictions: bool = False
     ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
         iterator = None
         if verbose:
@@ -63,5 +67,8 @@ class EmbeddingAnomalyDetector(AnomalyDetector):
             batch_seqs = self.get_seqences(batch)
             with torch.no_grad():
                 embs += self.time_series_model.encode(batch_seqs)
+        embs = torch.cat(embs, 0).cpu().detach().numpy()
 
+        if return_predictions:
+            return embs, None
         return embs

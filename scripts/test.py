@@ -16,7 +16,9 @@ from predpy.preprocessing import (
 from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
-from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
+from tsad.anomaly_detector import (
+    PredictionAnomalyDetector, ReconstructionAnomalyDetector,
+    EmbeddingAnomalyDetector)
 from models import LSTMAE, LSTMVAE
 
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -248,7 +250,8 @@ model2 = exp.load_pl_model(
     dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1"
 )
 
-ad2 = ReconstructionAnomalyDetector(
+# ad2 = ReconstructionAnomalyDetector(
+ad2 = EmbeddingAnomalyDetector(
     model2, target_cols_ids=tsm.target_cols_ids())
 
 

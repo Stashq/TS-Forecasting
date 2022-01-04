@@ -303,64 +303,6 @@ class AnomalyDetector:
             is_ae=issubclass(type(self.time_series_model), Autoencoder),
             title=title, file_path=file_path
         )
-        # labels = time_series.dataset.get_labels()
-        # dates = labels.index
-        # target = labels.columns
-
-        # true_series = time_series.dataset.sequences
-        # if isinstance(true_series, list):
-        #     true_series = pd.concat(true_series)
-
-        # data = []
-        # for col_name in target:
-        #     data += [go.Scatter(
-        #         x=true_series.index,
-        #         y=true_series[col_name],
-        #         connectgaps=False,
-        #         name=col_name)]
-
-        # for col_name in target:
-        #     data += [go.Scatter(
-        #         x=dates[pred_anomalies_ids],
-        #         y=labels[col_name][pred_anomalies_ids],
-        #         mode='markers', name="Predicted anomalies",
-        #         marker=dict(
-        #             line=dict(width=5, color='#9467bd'),
-        #             symbol='x-thin')
-        #     )]
-
-        # if model_preds is not None:
-        #     model_preds = np.array([
-        #         pred.cpu().detach().tolist()
-        #         for pred in model_preds
-        #     ])
-        #     for i, col_name in enumerate(target):
-        #         data += [go.Scatter(
-        #             x=dates, y=model_preds[:, i].tolist(), connectgaps=False,
-        #             name=col_name + "_pred")]
-
-        # if true_anomalies_ids is not None:
-        #     for col_name in target:
-        #         data += [go.Scatter(
-        #             x=dates[true_anomalies_ids],
-        #             y=labels[col_name][true_anomalies_ids],
-        #             mode='markers', name="True anomalies",
-        #             marker=dict(
-        #                 line=dict(width=5, color='#d62728'),
-        #                 symbol='x-thin')
-        #         )]
-
-        # layout = go.Layout(
-        #     title=title,
-        #     yaxis=dict(title="values"),
-        #     xaxis=dict(title='dates')
-        # )
-
-        # fig = go.Figure(data=data, layout=layout)
-        # if file_path is not None:
-        #     plot(fig, filename=file_path)
-        # else:
-        #     fig.show()
 
         # dane:
         # seria czasowa, wyniki wykrywania anomalii
