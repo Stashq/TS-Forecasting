@@ -16,7 +16,7 @@ class Gaussian(Distributor):
         self._means = []
         self._vars = []
 
-    def fit(self, data: np.ndarray):
+    def fit(self, data: np.ndarray, verbose: bool = False):
         if len(data.shape) == 2:
             self._n_dims = 1
             mean, var = norm.fit(data)
@@ -71,3 +71,6 @@ class Gaussian(Distributor):
         else:
             return norm.pdf(
                 data[..., dim], loc=self._means[dim], scale=self._vars[dim])
+
+    def predict(self, data: np.ndarray) -> np.ndarray:
+        return self.cdf(data)

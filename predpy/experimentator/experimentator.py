@@ -28,7 +28,7 @@ import os
 from dataclasses import asdict
 import torch
 
-from predpy.wrapper import Autoencoder, VAE, TSModelWrapper
+from predpy.wrapper import Autoencoder, TSModelWrapper
 from predpy.data_module import MultiTimeSeriesModule
 from predpy.preprocessing import load_and_preprocess
 from predpy.trainer import get_trained_pl_model
@@ -547,7 +547,7 @@ class Experimentator:
         checkpoint_params.dirpath =\
             os.path.join(chp_dirpath, tsm.name_, m_params.name_)
 
-        if m_params.WrapperCls == Autoencoder or m_params.WrapperCls == VAE:
+        if issubclass(m_params.WrapperCls, Autoencoder):
             m_params.wrapper_kwargs["target_cols_ids"] = tsm.target_cols_ids()
 
         if load_state:

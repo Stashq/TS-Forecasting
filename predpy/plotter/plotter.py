@@ -578,7 +578,7 @@ def _anomalies_to_scatter(
 
 def plot_3d_embeddings(
     embs_3d: np.ndarray,
-    are_anomalies: List[int] = None,
+    classes: List[int] = None,
     title: str = "Autoencoder embeddings",
     file_path: str = None
 ):
@@ -586,19 +586,33 @@ def plot_3d_embeddings(
         raise ValueError(
             "Wrong embeddings shape. Expected (n, 3), got "
             + str(embs_3d.shape))
+    classes = np.array(classes) == 0
 
-    data = [go.Scatter3d(
-        x=embs_3d[..., 0].tolist(),
-        y=embs_3d[..., 1].tolist(),
-        z=embs_3d[..., 2].tolist(),
-        mode='markers',
-        marker=dict(
-            size=12,
-            color=are_anomalies,
-            # colorscale='Viridis',   # choose a colorscale
-            # opacity=0.8
-        )
-    )]
+    data = [
+        go.Scatter3d(
+            x=embs_3d[classes, 0].tolist(),
+            y=embs_3d[classes, 1].tolist(),
+            z=embs_3d[classes, 2].tolist(),
+            mode='markers',
+            name="normal",
+            marker=dict(
+                size=12,
+                # color="blue",
+                # colorscale='Viridis',
+                opacity=0.7
+            )),
+        go.Scatter3d(
+            x=embs_3d[~classes, 0].tolist(),
+            y=embs_3d[~classes, 1].tolist(),
+            z=embs_3d[~classes, 2].tolist(),
+            mode='markers',
+            name="anomalies",
+            marker=dict(
+                size=12,
+                # color="red",
+                # colorscale='Viridis',
+                opacity=0.7
+            ))]
 
     layout = go.Layout(
         title=title,

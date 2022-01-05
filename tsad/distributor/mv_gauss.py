@@ -15,7 +15,7 @@ class MVGaussian(Distributor):
         self.mv_norm = None
         self.scaler = MinMaxScaler()
 
-    def fit(self, data: np.ndarray):
+    def fit(self, data: np.ndarray, verbose: bool = False):
         data = self._adjust_dims(data)
         data = self.scaler.fit_transform(data)
         mean = np.mean(data, axis=0)
@@ -50,3 +50,6 @@ class MVGaussian(Distributor):
         if len(data.shape) == 3:
             data = data.reshape(len(data), -1)
         return data
+
+    def predict(self, data: np.ndarray) -> np.ndarray:
+        return self.cdf(data)

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 class Distributor(ABC):
     @abstractmethod
-    def fit(self, data: np.ndarray):
+    def fit(self, data: np.ndarray, verbose: bool = False):
         """Fits distribution coefficients to data.
 
         Parameters
@@ -15,21 +15,7 @@ class Distributor(ABC):
         pass
 
     @abstractmethod
-    def cdf(
-        self,
-        data: np.ndarray
-    ) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    def ppf(
-        self,
-        data: np.ndarray
-    ) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    def pdf(
+    def predict(
         self,
         data: np.ndarray
     ) -> np.ndarray:

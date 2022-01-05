@@ -77,16 +77,17 @@ class AnomalyDetector:
     def fit_distributor(
         self,
         data: Union[torch.Tensor, MultiTimeSeriesDataloader],
-        verbose: bool = False
+        verbose: bool = False,
+        **kwargs
     ):
         result = self._any_forward(data, verbose)
-        self.distributor.fit(result)
+        self.distributor.fit(result, verbose=verbose, **kwargs)
 
     def fit_threshold(
         self,
         normal_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
         anomaly_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
-        class_weight: Dict = {0: 0.05, 1: 0.95},
+        class_weight: Dict = {0: 0.5, 1: 0.5},  # {0: 0.05, 1: 0.95},
         verbose: bool = False,
         plot_distribution: bool = False,
         plot_time_series: bool = False,
@@ -109,14 +110,15 @@ class AnomalyDetector:
             normal_data, verbose, return_predictions=True)
         a_res, a_preds = self._any_forward(
             anomaly_data, verbose, return_predictions=True)
-        cdf = np.concatenate(
-            [self.distributor.cdf(n_res), self.distributor.cdf(a_res)],
-            axis=0)
+        probs = np.concatenate([
+                self.distributor.predict(n_res),
+                self.distributor.predict(a_res)
+            ], axis=0)
         classes = [0]*len(n_res) + [1]*len(a_res)
         self.thresholder = LogisticRegression(
             class_weight=class_weight
-        ).fit(cdf, classes)
-        pred_cls = self.thresholder.predict(cdf)
+        ).fit(probs, classes)
+        pred_cls = self.thresholder.predict(probs)
 
         cm = confusion_matrix(classes, pred_cls)
         print(cm)
@@ -152,13 +154,14 @@ class AnomalyDetector:
         train_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
         anomaly_data: Union[torch.Tensor, MultiTimeSeriesDataloader],
         normal_data: Union[torch.Tensor, MultiTimeSeriesDataloader] = None,
-        class_weight: Dict = {0: 0.05, 1: 0.95},
+        class_weight: Dict = {0: 0.5, 1: 0.5},  # {0: 0.05, 1: 0.95},
         verbose: bool = True,
+        dist_kwargs: Dict = {},
         plot_distribution: bool = False,
         plot_time_series: bool = False,
         plot_embeddings: bool = False
     ):
-        self.fit_distributor(train_data, verbose)
+        self.fit_distributor(train_data, verbose=verbose, **dist_kwargs)
         self.fit_threshold(
             normal_data=normal_data, anomaly_data=anomaly_data,
             class_weight=class_weight, verbose=verbose,
@@ -169,11 +172,12 @@ class AnomalyDetector:
     def find_anomalies(
         self,
         data: MultiTimeSeriesDataloader,
-        classes_: List[int] = None,
+        classes: List[int] = None,
         return_indices: bool = False,
         verbose: bool = True,
         plot_dist: bool = False,
-        plot_time_series: bool = False
+        plot_time_series: bool = False,
+        plot_embeddings: bool = False
     ) -> Union[Tuple[np.ndarray], np.ndarray]:
         if plot_time_series:
             vals, model_preds = self.dataset_forward(
@@ -191,6 +195,9 @@ class AnomalyDetector:
         if plot_time_series:
             self.plot_with_time_series(
                 model_preds, title="Anomalies on time series plot")
+        if plot_embeddings:
+            self.plot_embeddings(
+                vals, classes)
         if return_indices is True:
             result = np.argwhere(result == 1)
         return result
@@ -271,19 +278,11 @@ class AnomalyDetector:
         else:
             fig.show()
 
-        # fig = ff.create_distplot(
-        #     [preds[:, 0][normal_ids].tolist(),
-        #      preds[:, dim][anomaly_ids].tolist()],
-        #     pdf[:, 0].tolist(),
-        #     bin_size=.02)
-        # fig.show()
-
     def plot_with_time_series(
         self,
         time_series: MultiTimeSeriesDataloader,
         pred_anomalies_ids: List[int],
         true_anomalies_ids: List[int] = None,
-        # model_preds: List[torch.Tensor] = None,
         model_preds: pd.DataFrame = None,
         title: str = "Finding anomalies",
         file_path: str = None
@@ -316,8 +315,8 @@ class AnomalyDetector:
         embs: np.ndarray,
         classes: List[int] = None
     ):
-        if not issubclass(type(self.time_series_model), Autoencoder):
-            print("Cannot plot embeddings for model other than Autoencoder.")
+        # if not issubclass(type(self.time_series_model), Autoencoder):
+        #     print("Cannot plot embeddings for model other than Autoencoder.")
         pca = PCA(n_components=3)
         embs_3d = pca.fit_transform(embs)
         plot_3d_embeddings(embs_3d, classes)

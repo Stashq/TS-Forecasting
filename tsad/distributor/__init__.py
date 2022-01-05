@@ -2,3 +2,4 @@
 from .base import Distributor
 from .gauss import Gaussian
 from .mv_gauss import MVGaussian
+from .gmm import GMM

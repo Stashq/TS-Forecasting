@@ -70,7 +70,7 @@ class Autoencoder(TSModelWrapper):
 
         preds = torch.cat(preds)
         preds = preds.transpose(1, 2)
-        preds = preds.view(-1, preds.shape[-1])
+        preds = preds.reshape(-1, preds.shape[-1])
         preds = preds.numpy()
 
         if scaler is not None:
