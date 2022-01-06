@@ -43,6 +43,7 @@ class TSModelWrapper(LightningModule, ABC):
         self.OptimizerClass = OptimizerClass
         self.optimizer_kwargs = optimizer_kwargs
         self.lr = lr
+        self.params_to_train = None
 
     def forward(self, x):
         return self.model(x)
@@ -54,30 +55,33 @@ class TSModelWrapper(LightningModule, ABC):
     def get_Xy(self, batch):
         pass
 
-    def training_step(self, batch, batch_idx):
-        sequences, labels = self.get_Xy(batch)
+    @abstractmethod
+    def step(self, batch):
+        pass
 
-        loss = self.get_loss(self(sequences), labels)
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch)
         self.log("train_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        sequences, labels = self.get_Xy(batch)
-
-        loss = self.get_loss(self(sequences), labels)
+        loss = self.step(batch)
         self.log("val_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def test_step(self, batch, batch_idx):
-        sequences, labels = self.get_Xy(batch)
-
-        loss = self.get_loss(self(sequences), labels)
+        loss = self.step(batch)
         self.log("test_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def configure_optimizers(self):
-        return self.OptimizerClass(
-            self.parameters(), self.lr, **self.optimizer_kwargs)
+        if self.params_to_train is None:
+            opt = self.OptimizerClass(
+                self.parameters(), self.lr, **self.optimizer_kwargs)
+        else:
+            opt = self.OptimizerClass(
+                self.params_to_train, self.lr, **self.optimizer_kwargs)
+        return opt
 
     def predict(self, sequence):
         with torch.no_grad():

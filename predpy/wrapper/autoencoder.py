@@ -56,6 +56,12 @@ class Autoencoder(TSModelWrapper):
             y = X
         return X, y
 
+    def step(self, batch):
+        sequences, labels = self.get_Xy(batch)
+
+        loss = self.get_loss(self(sequences), labels)
+        return loss
+
     def get_dataset_predictions(
         self,
         dataloader: MultiTimeSeriesDataloader,
@@ -81,6 +87,9 @@ class Autoencoder(TSModelWrapper):
 
     def encode(self, x):
         return self.model.encode(x)
+
+    def decode(self, emb):
+        return self.model.decode(emb)
 
     def preds_to_dataframe(
         self,

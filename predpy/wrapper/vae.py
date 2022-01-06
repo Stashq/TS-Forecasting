@@ -35,7 +35,7 @@ class VAE(Autoencoder):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        kld_weight: float = 1.0
+        kld_weight: float = 0.1
     ):
         super().__init__(
             model=model, lr=lr, criterion=criterion,
@@ -43,62 +43,32 @@ class VAE(Autoencoder):
             target_cols_ids=target_cols_ids)
         self.kld_weight = kld_weight
 
-    def get_loss(
-        self,
-        recons: torch.Tensor,
-        input: torch.Tensor,
-        mu: torch.Tensor,
-        log_sig: torch.Tensor
-    ) -> dict:
-        """
-        Computes the VAE loss function.
-        KL(N(\\mu, \\sigma), N(0, 1)) =
-        \\log \frac{1}{\\sigma} + \frac{\\sigma^2 + \\mu^2}{2} - \frac{1}{2}
-        :param args:
-        :param kwargs:
-        :return:
-        """
-
-        # Account for the minibatch samples from the dataset
-
-        # recons_loss = F.mse_loss(recons, input)
-        recons_loss = self.criterion(recons, input)
-
-        kld_loss = torch.mean(
+    def get_kld_loss(self, mu, log_sig):
+        return torch.mean(
             -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
             dim=0
         )
 
+    def get_loss(
+        self,
+        recons: torch.Tensor,
+        input: torch.Tensor,
+        z_mu: torch.Tensor,
+        z_log_sig: torch.Tensor
+    ) -> dict:
+        recons_loss = self.criterion(recons, input)
+        kld_loss = self.get_kld_loss(z_mu, z_log_sig)
         loss = recons_loss + self.kld_weight * kld_loss
         return loss
 
-    def training_step(self, batch, batch_idx):
-        sequences, labels = self.get_Xy(batch)
+    def step(self, batch):
+        sequences, _ = self.get_Xy(batch)
 
         x_tilda, z_mu, z_log_sig = self(sequences)
         loss = self.get_loss(x_tilda, sequences, z_mu, z_log_sig)
-        self.log("train_loss", loss, prog_bar=True, logger=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        sequences, labels = self.get_Xy(batch)
-
-        x_tilda, z_mu, z_log_sig = self(sequences)
-        loss = self.get_loss(x_tilda, sequences, z_mu, z_log_sig)
-        self.log("val_loss", loss, prog_bar=True, logger=True)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        sequences, labels = self.get_Xy(batch)
-
-        x_tilda, z_mu, z_log_sig = self(sequences)
-        loss = self.get_loss(x_tilda, sequences, z_mu, z_log_sig)
-        self.log("test_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def predict(self, sequence):
         with torch.no_grad():
-            # x_tilda, z_mu, z_log_sig = self(sequence)
-            # result = x_tilda.tolist(), z_mu.tolist(), z_log_sig.tolist()
             result, _, _ = self(sequence)
             return result

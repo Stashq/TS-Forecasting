@@ -15,3 +15,4 @@ from .predictor import Predictor
 from .autoencoder import Autoencoder
 from .vae import VAE
 from .pae import PAE
+from .pvae import PVAE

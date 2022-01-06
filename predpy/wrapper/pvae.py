@@ -9,10 +9,10 @@ from torch import nn, optim
 from typing import Dict, List
 # from torch.autograd import Variable
 
-from .autoencoder import Autoencoder
+from .vae import VAE
 
 
-class PAE(Autoencoder):
+class PVAE(VAE):
     """Lightning module with functionalities for time series prediction
     models.\n
 
@@ -35,13 +35,15 @@ class PAE(Autoencoder):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
+        kld_weight: float = 0.1,
         sig_weight: float = 1.0,
         sigma_tuning_coef: float = 1.0
     ):
         super().__init__(
             model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs,
-            target_cols_ids=target_cols_ids)
+            target_cols_ids=target_cols_ids,
+            kld_weight=kld_weight)
         self.sigma_tuning = False
         self.sigma_tuning_coef = sigma_tuning_coef
         self.sig_weight = sig_weight
@@ -52,14 +54,6 @@ class PAE(Autoencoder):
             self.model.x_log_sig_dense.bias,
             self.model.x_log_sig_dense.weight
         ]
-        # for name, param in self.model.state_dict().items():
-        #     if name[:13] == 'x_log_sig_dense':
-        #         self.params_to_train += [param]
-        #     else:
-        #         param.requires_grad = False
-        # for param in self.model.parameters():
-        #     param.requires_grad = False
-        # self.model.x_log_sig_dense.requires_grad = True
 
     def disable_sigma_tuning(self):
         self.sigma_tuning = False
@@ -67,29 +61,23 @@ class PAE(Autoencoder):
             param.requires_grad = True
         self.params_to_train = None
 
-    # def get_X_preds(self, batch):
-    #     if self.target_cols_ids is None:
-    #         X = batch["sequence"]
-    #     else:
-    #         X = torch.index_select(
-    #             batch["sequence"], dim=1,
-    #             index=torch.tensor(self.target_cols_ids, device=self.device))
-    #     preds = batch["preds"]
-    #     return X, preds
-
     def get_loss(
         self,
         recons: torch.Tensor,
         input: torch.Tensor,
-        mu: torch.Tensor,
-        log_sig: torch.Tensor,
+        z_mu: torch.Tensor,
+        z_log_sig: torch.Tensor,
+        x_mu: torch.Tensor,
+        x_log_sig: torch.Tensor,
         tuning: bool = False
     ) -> dict:
-        sig_loss = self.get_sigma_loss(input, mu, log_sig)
-        loss = self.sig_weight * sig_loss
-        if tuning:
+        kld_loss = self.get_kld_loss(z_mu, z_log_sig)
+        sig_loss = self.get_sigma_loss(input, x_mu, x_log_sig)
+        loss = self.kld_weight * kld_loss\
+            + kld_loss.detach() * self.sig_weight * sig_loss
+        if tuning is False:
             recons_loss = self.criterion(recons, input)
-            loss += recons_loss
+            loss = loss + recons_loss
         return loss
 
     def get_sigma_loss(self, x, x_mu, x_log_sig):
@@ -97,23 +85,32 @@ class PAE(Autoencoder):
         x_sig = torch.exp(x_log_sig)
         # err = Variable(torch.abs(x - x_mu), requires_grad=True)
         err = torch.abs(x - x_mu)
-        # TODO: opcjonalnie zerowanie ujemnych wartości
         return self.criterion(err, self.sigma_tuning_coef * x_sig)
 
     def step(self, batch):
         sequences, _ = self.get_Xy(batch)
 
-        x_tilda, x_mu, x_log_sig = self(sequences)
+        x_tilda, z_mu, z_log_sig, x_mu, x_log_sig = self(sequences)
         loss = self.get_loss(
-            x_tilda, sequences, x_mu, x_log_sig, tuning=self.sigma_tuning)
+            recons=x_tilda, input=sequences, z_mu=z_mu, z_log_sig=z_log_sig,
+            x_mu=x_mu, x_log_sig=x_log_sig, tuning=self.sigma_tuning)
         return loss
 
-    def predict(self, sequence, get_x_log_sig: bool = False):
+    def predict(
+        self,
+        sequence,
+        get_x_log_sig: bool = False,
+        get_z_log_sig: bool = False
+    ):
         with torch.no_grad():
-            _, x_mu, x_log_sig = self(sequence)
+            _, _, z_log_sig, x_mu, x_log_sig = self(sequence)
 
-        if get_x_log_sig:
-            res = x_mu, x_log_sig
+        if get_x_log_sig & get_z_log_sig:
+            res = (x_mu, x_log_sig, z_log_sig)
+        elif get_x_log_sig:
+            res = (x_mu, x_log_sig)
+        elif get_z_log_sig:
+            res = (x_mu, x_log_sig)
         else:
             res = x_mu
         return res

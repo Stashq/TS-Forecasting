@@ -47,6 +47,12 @@ class Predictor(TSModelWrapper):
         y = batch["label"]
         return X, y
 
+    def step(self, batch):
+        sequences, labels = self.get_Xy(batch)
+
+        loss = self.get_loss(self(sequences), labels)
+        return loss
+
     def get_dataset_predictions(
         self,
         dataloader: MultiTimeSeriesDataloader,
