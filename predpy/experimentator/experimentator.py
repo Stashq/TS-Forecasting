@@ -254,7 +254,7 @@ class Experimentator:
         model_idx: int,
         dir_path: str,
         file_name: str = None,
-        find_last: bool = True,
+        find_last: bool = False,
         create_if_not_found: bool = False,
         get_epoch: bool = False
     ):
@@ -263,6 +263,8 @@ class Experimentator:
 
         if file_name is None:
             file_name = self.exp_date
+        elif file_name[-5:] == ".ckpt":
+            file_name = file_name[:-5]
         if dir_path is None:
             dir_path = self.datasets_params["path"]
         if find_last:
