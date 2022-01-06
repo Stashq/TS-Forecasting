@@ -63,8 +63,12 @@ class LSTMAE(nn.Module):
 
     def forward(self, x):
         emb = self.encoder(x)
-        x_tilda = self.decoder(emb)
+        x_tilda = self.decode(emb)
         return x_tilda
 
     def encode(self, x):
         return self.encoder(x)
+
+    def decode(self, emb):
+        x_tilda = self.decoder(emb)
+        return x_tilda

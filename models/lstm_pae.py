@@ -38,25 +38,30 @@ class LSTMPAE(nn.Module):
         super(LSTMPAE, self).__init__()
         self.encoder = AEPart(c_in, h_size, n_layers)
         self.decoder = AEPart(h_size, c_in, n_layers)
-        self.mu_dense = nn.Linear(c_in, c_in)
-        self.log_sig_dense = nn.Linear(c_in, c_in)
+        self.x_mu_dense = nn.Linear(c_in, c_in)
+        self.x_log_sig_dense = nn.Linear(c_in, c_in)
 
-    def reparametrization(self, x_mu, x_log_sig):
-        eps = torch.randn_like(x_mu)
-        x = x_mu + eps * torch.exp(x_log_sig/2.0)
-        return x
+    def reparametrization(self, mu, log_sig):
+        eps = torch.randn_like(mu)
+        res = mu + eps * torch.exp(log_sig/2.0)
+        return res
 
     def encode(self, x: torch.Tensor):
         emb = self.encoder(x)
         return emb
 
+    def decode(self, emb: torch.Tensor):
+        emb = self.decoder(emb)
+        x_mu, x_log_sig = self.x_mu_dense(emb), self.x_log_sig_dense(emb)
+        x_tilda = self.reparametrization(x_mu, x_log_sig)
+        return x_tilda, x_mu, x_log_sig
+
     def predict(self, x: torch.Tensor):
         emb = self.encode(x)
-        emb = self.decoder(emb)
-        x_mu, x_log_sig = self.mu_dense(emb), self.log_sig_dense(emb)
+        _, x_mu, x_log_sig = self.decode(emb)
         return x_mu, x_log_sig
 
     def forward(self, x: torch.Tensor):
-        x_mu, x_log_sig = self.predict(x)
-        x_tilda = self.reparametrization(x_mu, x_log_sig)
+        emb = self.encode(x)
+        x_tilda, x_mu, x_log_sig = self.decode(emb)
         return x_tilda, x_mu, x_log_sig

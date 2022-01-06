@@ -5,7 +5,7 @@ import torch
 # from ..predpy.wrapper.autoencoder import Autoencoder
 
 
-class Encoder(nn.Module):
+class AEPart(nn.Module):
     def __init__(
         self,
         input_size: int,
@@ -28,41 +28,20 @@ class Encoder(nn.Module):
         return emb
 
 
-class Decoder(nn.Module):
-    def __init__(
-        self,
-        z_size: int,
-        h_size: int,
-        n_layers: int
-    ):
-        super().__init__()
-        self.z_size = z_size
-        self.n_layers = n_layers
-        self.h_size = h_size
-        self.lstm = nn.LSTM(
-            input_size=z_size,
-            hidden_size=h_size,
-            num_layers=n_layers,
-            batch_first=True
-        )
-
-    def forward(self, z):
-        x_tilda, (_, _) = self.lstm(z)
-        return x_tilda
-
-
-class LSTMVAE(nn.Module):
+class LSTMPVAE(nn.Module):
     def __init__(
         self,
         c_in: int,
         h_size: int,
         n_layers: int
     ):
-        super(LSTMVAE, self).__init__()
-        self.encoder = Encoder(c_in, h_size, n_layers)
-        self.decoder = Decoder(h_size, c_in, n_layers)
+        super(LSTMPVAE, self).__init__()
+        self.encoder = AEPart(c_in, h_size, n_layers)
+        self.decoder = AEPart(h_size, c_in, n_layers)
         self.z_mu_dense = nn.Linear(h_size, h_size)
         self.z_log_sig_dense = nn.Linear(h_size, h_size)
+        self.x_mu_dense = nn.Linear(c_in, c_in)
+        self.x_log_sig_dense = nn.Linear(c_in, c_in)
 
     def reparametrization(self, mu, log_sig):
         eps = torch.randn_like(mu)
@@ -71,12 +50,14 @@ class LSTMVAE(nn.Module):
 
     def forward(self, x: torch.Tensor):
         z, z_mu, z_log_sig = self.encode(x, return_all=True)
-        x_tilda = self.decode(z)
-        return (x_tilda, z_mu, z_log_sig)
+        x_tilda, x_mu, x_log_sig = self.decode(z)
+        return (x_tilda, z_mu, z_log_sig, x_mu, x_log_sig)
 
     def decode(self, z):
-        x_tilda = self.decoder(z)
-        return x_tilda
+        emb = self.decoder(z)
+        x_mu, x_log_sig = self.x_mu_dense(emb), self.x_log_sig_dense(emb)
+        x_tilda = self.reparametrization(x_mu, x_log_sig)
+        return x_tilda, x_mu, x_log_sig
 
     def encode(self, x: torch.Tensor, return_all: bool = False):
         emb = self.encoder(x)
