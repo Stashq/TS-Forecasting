@@ -57,7 +57,7 @@ class ReconstructionDistributionAnomalyDetector(ReconstructionAnomalyDetector):
             seqs += [batch_seqs]
             with torch.no_grad():
                 mu, log_sig = self.time_series_model.predict(
-                    batch_seqs, get_log_sig=True)
+                    batch_seqs, get_x_log_sig=True)
                 x_mu += mu
                 x_log_sig += log_sig
         seqs = torch.cat(seqs, 0)
