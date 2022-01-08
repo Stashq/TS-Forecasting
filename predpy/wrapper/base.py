@@ -14,7 +14,7 @@ from predpy.dataset import MultiTimeSeriesDataloader
 import torch
 
 
-class TSModelWrapper(LightningModule, ABC):
+class ModelWrapper(LightningModule, ABC):
     """Lightning module with functionalities for time series prediction
     models.\n
 

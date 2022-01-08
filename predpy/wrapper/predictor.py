@@ -6,7 +6,7 @@ it target value named "label". Compatibile with :py:mod:`dataset`.
 """
 from torch import nn, optim
 from typing import Dict
-from .base import TSModelWrapper
+from .base import ModelWrapper
 from sklearn.base import TransformerMixin
 from predpy.dataset import MultiTimeSeriesDataloader
 from tqdm.auto import tqdm
@@ -15,7 +15,7 @@ import pandas as pd
 import torch
 
 
-class Predictor(TSModelWrapper):
+class Predictor(ModelWrapper):
     """Lightning module with functionalities for time series prediction
     models.\n
 

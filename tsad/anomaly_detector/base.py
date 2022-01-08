@@ -1,5 +1,5 @@
 from tsad.distributor import Distributor, Gaussian
-from predpy.wrapper import TSModelWrapper
+from predpy.wrapper import ModelWrapper
 from predpy.dataset import MultiTimeSeriesDataloader
 from predpy.wrapper import Autoencoder
 from predpy.plotter.plotter import plot_anomalies, plot_3d_embeddings
@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from abc import abstractmethod
 from typing import Union, Tuple, Dict, List
+from datetime import timedelta
 from sklearn.linear_model import LogisticRegression
 from string import Template
 import plotly as pl
@@ -27,7 +28,7 @@ Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
 class AnomalyDetector:
     def __init__(
         self,
-        time_series_model: TSModelWrapper,
+        time_series_model: ModelWrapper,
         distributor: Distributor = Gaussian(),
     ):
         self.time_series_model = time_series_model
@@ -80,7 +81,7 @@ class AnomalyDetector:
         verbose: bool = False,
         **kwargs
     ):
-        result = self._any_forward(data, verbose)
+        result = self._any_forward(data, verbose=verbose)
         self.distributor.fit(result, verbose=verbose, **kwargs)
 
     def fit_threshold(
@@ -123,31 +124,16 @@ class AnomalyDetector:
         cm = confusion_matrix(classes, pred_cls)
         print(cm)
 
-        if plot_distribution:
-            self.plot_gaussian_result(
-                vals=np.concatenate([
-                    n_res, a_res]),
-                classes=classes,
-                title="Result of fitting")
-        if plot_time_series:
-            self.plot_with_time_series(
-                time_series=normal_data,
-                pred_anomalies_ids=np.argwhere(
-                    pred_cls[:len(n_res)] == 1).T[0],
-                model_preds=n_preds,
-                title="Detecting anomalies on normal data"
-            )
-            self.plot_with_time_series(
-                time_series=anomaly_data,
-                pred_anomalies_ids=np.argwhere(
-                    pred_cls[len(n_res):] == 1).T[0],
-                true_anomalies_ids=list(range(0, len(a_res))),
-                model_preds=a_preds,
-                title="Detecting anomalies on anomaly data"
-            )
-        if plot_embeddings:
-            self.plot_embeddings(
-                np.concatenate([n_res, a_res], axis=0), classes)
+        self._plot_fit_results(
+            plot_time_series=plot_time_series,
+            plot_embeddings=plot_embeddings,
+            plot_distribution=False,
+            n_res=n_res, a_res=a_res,
+            classes=classes, pred_cls=pred_cls,
+            n_data=normal_data, a_data=anomaly_data,
+            model_n_ts_preds=n_preds,
+            model_a_ts_preds=a_preds,
+            n_embs=None, a_embs=None)
 
     def fit(
         self,
@@ -175,32 +161,32 @@ class AnomalyDetector:
         classes: List[int] = None,
         return_indices: bool = False,
         verbose: bool = True,
-        plot_dist: bool = False,
+        plot_distribution: bool = False,
         plot_time_series: bool = False,
         plot_embeddings: bool = False
     ) -> Union[Tuple[np.ndarray], np.ndarray]:
         if plot_time_series:
-            vals, model_preds = self.dataset_forward(
+            res, model_preds = self.dataset_forward(
                 data, verbose, return_predictions=True)
         else:
-            vals = self.dataset_forward(
+            res = self.dataset_forward(
                 data, verbose, return_predictions=False)
 
-        cdf_res = self.distributor.cdf(vals)
-        result = self.thresholder.predict(cdf_res)
+        probs = self.distributor.predict(res)
+        pred_cls = self.thresholder.predict(probs)
 
-        if plot_dist:
-            self.plot_with_distribution(
-                cdf_res, title="Anomalies on distribution plot")
-        if plot_time_series:
-            self.plot_with_time_series(
-                model_preds, title="Anomalies on time series plot")
-        if plot_embeddings:
-            self.plot_embeddings(
-                vals, classes)
+        self._plot_detection_results(
+            plot_time_series=plot_time_series,
+            plot_embeddings=plot_embeddings,
+            plot_distribution=False,
+            data=data,
+            res=res,
+            pred_cls=pred_cls,
+            model_ts_preds=model_preds,
+            embs=None)
         if return_indices is True:
-            result = np.argwhere(result == 1)
-        return result
+            pred_cls = np.argwhere(pred_cls == 1)
+        return pred_cls
 
     def plot_gaussian_result(
         self,
@@ -278,33 +264,84 @@ class AnomalyDetector:
         else:
             fig.show()
 
+    def _anomalies_ids_to_points_df(
+        self,
+        anom_ids: List[int],
+        time_series: MultiTimeSeriesDataloader,
+    ):
+        if issubclass(type(self.time_series_model), Autoencoder):
+            df = time_series.dataset.global_ids_to_data(
+                anom_ids)
+        else:
+            df = time_series.dataset.get_labels().iloc[
+                anom_ids]
+        return df
+
+    def _anomalies_to_intervals(
+        self,
+        anomalies: pd.DataFrame,
+        time_series: MultiTimeSeriesDataloader,
+    ):
+        def get_previous(index: pd.Series, idx: Union[int, timedelta]):
+            return index.iloc[index.get_loc(idx) - 1]
+        step = time_series.dataset.sequences[0]\
+            .index.to_series().diff().mode()[0]
+
+        index = anomalies.index.to_series()
+        diffs = index.diff()
+
+        splits = diffs[diffs > step].index
+        if len(anomalies) == 0:
+            intervals = None
+        elif splits.shape[0] == 0:
+            intervals = [(index.iloc[0], index.iloc[-1])]
+        else:
+            intervals = [
+                (index.iloc[0],
+                 index.iloc[get_previous(index, splits[0])])]
+            intervals += [
+                (splits[i],
+                 index.iloc[get_previous(index, splits[i+1])])
+                for i in range(len(splits)-1)
+            ]
+            intervals += [(splits[-1], index.iloc[-1])]
+
+        return intervals
+
     def plot_with_time_series(
         self,
         time_series: MultiTimeSeriesDataloader,
         pred_anomalies_ids: List[int],
         true_anomalies_ids: List[int] = None,
         model_preds: pd.DataFrame = None,
+        detector_boundries: pd.DataFrame = None,
+        anomalies_as_intervals: bool = False,
         title: str = "Finding anomalies",
         file_path: str = None
     ):
-        if issubclass(type(self.time_series_model), Autoencoder):
-            pred_anomalies = time_series.dataset.global_ids_to_data(
-                pred_anomalies_ids)
-        else:
-            pred_anomalies = time_series.dataset.get_labels().iloc[
-                pred_anomalies_ids]
+        pred_anom = self._anomalies_ids_to_points_df(
+            anom_ids=pred_anomalies_ids, time_series=time_series)
+        if anomalies_as_intervals:
+            pred_anom_intervals = self._anomalies_to_intervals(
+                anomalies=pred_anom, time_series=time_series)
 
-        true_anomalies = None
+        true_anom = None
+        true_anom_intervals = None
         if true_anomalies_ids is not None:
-            true_anomalies = time_series.dataset.global_ids_to_data(
+            true_anom = time_series.dataset.global_ids_to_data(
                 true_anomalies_ids)
+            if anomalies_as_intervals:
+                true_anom_intervals = self._anomalies_to_intervals(
+                    anomalies=true_anom, time_series=time_series)
 
         ts = pd.concat(time_series.dataset.sequences)[
             time_series.dataset.target]
         plot_anomalies(
             time_series=ts,
-            pred_anomalies=pred_anomalies,
-            true_anomalies=true_anomalies,
+            pred_anomalies=pred_anom,
+            pred_anomalies_intervals=pred_anom_intervals,
+            true_anomalies=true_anom,
+            true_anomalies_intervals=true_anom_intervals,
             predictions=model_preds,
             is_ae=issubclass(type(self.time_series_model), Autoencoder),
             title=title, file_path=file_path
@@ -320,6 +357,72 @@ class AnomalyDetector:
         pca = PCA(n_components=3)
         embs_3d = pca.fit_transform(embs)
         plot_3d_embeddings(embs_3d, classes)
+
+    def _plot_fit_results(
+        self,
+        plot_time_series=False,
+        plot_embeddings=False,
+        plot_distribution=False,
+        n_res=None, a_res=None,
+        n_pred_errs=None, a_pred_errs=None,
+        classes=None, pred_cls=None,
+        n_data=None, a_data=None,
+        model_n_ts_preds=None, model_a_ts_preds=None,
+        n_embs=None, a_embs=None,
+        anomalies_as_intervals=True
+    ):
+        if plot_time_series:
+            self.plot_with_time_series(
+                time_series=n_data,
+                pred_anomalies_ids=np.argwhere(
+                    pred_cls[:len(n_res)] == 1).T[0],
+                model_preds=model_n_ts_preds,
+                detector_boundries=n_pred_errs,
+                anomalies_as_intervals=anomalies_as_intervals,
+                title="Detecting anomalies on normal data"
+            )
+            self.plot_with_time_series(
+                time_series=a_data,
+                pred_anomalies_ids=np.argwhere(
+                    pred_cls[len(n_res):] == 1).T[0],
+                true_anomalies_ids=list(range(0, len(a_res))),
+                model_preds=model_a_ts_preds,
+                detector_boundries=a_pred_errs,
+                anomalies_as_intervals=anomalies_as_intervals,
+                title="Detecting anomalies on anomaly data"
+            )
+        if plot_embeddings:
+            self.plot_embeddings(
+                np.concatenate([n_embs, a_embs], axis=0), classes)
+        if plot_distribution:
+            self.plot_gaussian_result(
+                vals=np.concatenate([
+                    n_res, a_res]),
+                classes=classes,
+                title="Result of fitting")
+
+    def _plot_detection_results(
+        self,
+        plot_time_series=False,
+        plot_embeddings=False,
+        plot_distribution=False,
+        data=None,
+        res=None,
+        pred_cls=None,
+        model_ts_preds=None,
+        embs=None,
+    ):
+        if plot_time_series:
+            self.plot_with_time_series(
+                time_series=data, pred_anomalies_ids=pred_cls,
+                model_preds=model_ts_preds, title="Predicted anomalies")
+        if plot_embeddings:
+            self.plot_embeddings(
+                embs=embs, classes=pred_cls)
+        if plot_distribution:
+            self.plot_gaussian_result(
+                vals=res, classes=pred_cls,
+                title="Anomalies on distribution plot")
 
         # dane:
         # seria czasowa, wyniki wykrywania anomalii

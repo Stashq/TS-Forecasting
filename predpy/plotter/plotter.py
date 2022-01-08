@@ -10,6 +10,9 @@ from predpy.data_module import MultiTimeSeriesModule
 from .experimentator_plot import ExperimentatorPlot
 from predpy.wrapper import Autoencoder
 
+PREDICTED_ANOMALIES_COLOR = '#9467bd'
+TRUE_ANOMALIES_COLOR = '#d62728'
+
 
 def _series_to_scatter(
     ts: pd.Series, name: str, version: str = ""
@@ -268,15 +271,15 @@ def plot_preprocessed_dataset(
     # adding v-lines splitting train, val and test datasets
     start = df.index[start]
     end = df.index[end-1]
-    _add_dataset_type_vrect(
+    _add_vrect(
         fig, df.index[0], df.index[train_end], start, end,
         fillcolor="blue", opacity=0.3, layer="below", line_width=1,
         annotation_text="train")
-    _add_dataset_type_vrect(
+    _add_vrect(
         fig, df.index[val_start], df.index[val_end], start, end,
         fillcolor="yellow", opacity=0.3, layer="below", line_width=1,
         annotation_text="validation")
-    _add_dataset_type_vrect(
+    _add_vrect(
         fig, df.index[test_start], df.index[-1], start, end,
         fillcolor="red", opacity=0.3, layer="below", line_width=1,
         annotation_text="test")
@@ -333,7 +336,7 @@ def _scale_inverse(
     return result
 
 
-def _add_dataset_type_vrect(
+def _add_vrect(
     fig: go.Figure,
     x0: Union[datetime, int],
     x1: Union[datetime, int],
@@ -347,6 +350,23 @@ def _add_dataset_type_vrect(
         x1 = end
     if x0 < x1:
         fig.add_vrect(x0=x0, x1=x1, **kwargs)
+
+
+def _add_vrects(
+    fig: go.Figure,
+    intervals: List[Tuple[Union[datetime, int]]],
+    start: Union[datetime, int],
+    end: Union[datetime, int],
+    **kwargs
+):
+    for inter in intervals:
+        x0, x1 = inter
+        if x0 < start:
+            x0 = start
+        if x1 > end:
+            x1 = end
+        if x0 < x1:
+            fig.add_vrect(x0=x0, x1=x1, **kwargs)
 
 
 def preds_and_true_vals_to_scatter_data(
@@ -518,8 +538,10 @@ def plot_aggregated_predictions(
 
 def plot_anomalies(
     time_series: Union[pd.Series, pd.DataFrame],
-    pred_anomalies: Union[pd.Series, pd.DataFrame],
+    pred_anomalies: Union[pd.Series, pd.DataFrame] = None,
+    pred_anomalies_intervals: List[Tuple] = None,
     true_anomalies: Union[pd.Series, pd.DataFrame] = None,
+    true_anomalies_intervals: Union[pd.Series, pd.DataFrame] = None,
     predictions: pd.DataFrame = None,
     # target: str = None,
     # scaler: TransformerMixin = None,
@@ -528,15 +550,16 @@ def plot_anomalies(
     file_path: str = None
 ):
     data = ts_to_plotly_data(time_series, "True values")
-    data += _anomalies_to_scatter(
-        anomalies=pred_anomalies, color='#9467bd',
-        label="predicted anomalies")
 
+    if pred_anomalies is not None:
+        data += pandas_to_scatter(
+            vals=pred_anomalies, color=PREDICTED_ANOMALIES_COLOR,
+            label="predicted anomalies")
     if predictions is not None:
         data += ts_to_plotly_data(predictions, "Predictions", is_ae=is_ae)
     if true_anomalies is not None:
-        data += _anomalies_to_scatter(
-            anomalies=pred_anomalies, color='#d62728',
+        data += pandas_to_scatter(
+            vals=pred_anomalies, color=TRUE_ANOMALIES_COLOR,
             label="true anomalies"
         )
     #     data += preds_and_true_vals_to_scatter_data(
@@ -553,27 +576,56 @@ def plot_anomalies(
     )
 
     fig = go.Figure(data=data, layout=layout)
+    if pred_anomalies_intervals is not None:
+        _add_vrects(
+            fig, pred_anomalies_intervals,
+            start=time_series.index[0], end=time_series.index[-1],
+            fillcolor=PREDICTED_ANOMALIES_COLOR,
+            opacity=0.3, layer="below", line_width=1
+        )  # annotation_text="predicted anomalies")
+    if true_anomalies_intervals is not None:
+        _add_vrects(
+            fig, true_anomalies_intervals,
+            start=time_series.index[0], end=time_series.index[-1],
+            fillcolor=TRUE_ANOMALIES_COLOR,
+            opacity=0.3, layer="below", line_width=1
+        )  # annotation_text="true anomalies")
     if file_path is not None:
         plot(fig, filename=file_path)
     else:
         fig.show()
 
 
-def _anomalies_to_scatter(
-    anomalies: Union[pd.DataFrame, pd.Series],
-    color: str = '#9467bd',
+def pandas_to_scatter(
+    vals: Union[pd.DataFrame, pd.Series],
+    color: str = '#d5c915',
     label: str = ""
 ) -> List[go.Scatter]:
-    return [
-        go.Scatter(
-            x=anomalies.index,
-            y=anomalies[col],
-            mode='markers', name=col + " " + label,
-            marker=dict(
-                line=dict(width=5, color=color),
-                symbol='x-thin'))
-        for col in anomalies.columns
-    ]
+    if isinstance(vals, pd.DataFrame):
+        res = [
+            go.Scatter(
+                x=vals.index,
+                y=vals[col],
+                mode='markers', name=col + " " + label,
+                marker=dict(
+                    line=dict(width=5, color=color),
+                    symbol='x-thin'))
+            for col in vals.columns
+        ]
+    elif isinstance(vals, pd.Series):
+        res = [
+            go.Scatter(
+                x=vals.index,
+                y=vals,
+                mode='markers', name=vals.name + " " + label,
+                marker=dict(
+                    line=dict(width=5, color=color),
+                    symbol='x-thin'))
+        ]
+    else:
+        raise ValueError(
+            "Expected dataframe or series, got %s" % str(type(vals)))
+    return res
 
 
 def plot_3d_embeddings(

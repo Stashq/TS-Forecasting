@@ -5,7 +5,7 @@ sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
 from predpy.dataset import MultiTimeSeriesDataset, MultiTimeSeriesDataloader
 from predpy.data_module import MultiTimeSeriesModule
-from predpy.wrapper import Autoencoder, Predictor, VAE, PAE
+from predpy.wrapper import Autoencoder, Predictor, VAE, PAE, PVAE
 from predpy.experimentator import (
     DatasetParams, ModelParams,
     Experimentator, load_experimentator)
@@ -15,14 +15,18 @@ from predpy.preprocessing import (
     load_and_preprocess, set_index, moving_average, drop_if_is_in,
     use_dataframe_func, loc, iloc, get_isoforest_filter, get_variance_filter)
 from predpy.trainer import (
-    CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
+    CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams,
+    get_trained_pl_model)
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import (
     PredictionAnomalyDetector, ReconstructionAnomalyDetector,
-    EmbeddingAnomalyDetector, ReconstructionDistributionAnomalyDetector)
-from models import LSTMAE, LSTMVAE, LSTMPAE
+    EmbeddingAnomalyDetector, ReconstructionDistributionAnomalyDetector,
+    ReconstructionAndEmbeddingAnomalyDetector)
+from tsad.error_regressor import NNRegressor
+from models import LSTMAE, LSTMVAE, LSTMPAE, LSTMPVAE
 
 from pytorch_lightning.loggers import TensorBoardLogger
+import pytorch_lightning as pl
 import pickle
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -114,16 +118,16 @@ models_params = [
     #     init_params=dict(
     #         c_in=window_size, h_size=200, n_layers=1),
     #     WrapperCls=Autoencoder),
-    # ModelParams(
-    #     name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
-    #     init_params=dict(
-    #         c_in=window_size, h_size=200, n_layers=1),
-    #     WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=1e-6)),
     ModelParams(
-        name_="LSTMPAE_h200_l1", cls_=LSTMPAE,
+        name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
         init_params=dict(
             c_in=window_size, h_size=200, n_layers=1),
-        WrapperCls=PAE),
+        WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=1e-6)),
+    # ModelParams(
+    #     name_="LSTMPVAE_h200_l1", cls_=LSTMPVAE,
+    #     init_params=dict(
+    #         c_in=window_size, h_size=200, n_layers=1),
+    #     WrapperCls=PVAE, wrapper_kwargs=dict(kld_weight=1e-6)),
 ]
 
 chp_p = CheckpointParams(
@@ -133,36 +137,43 @@ tr_p = TrainerParams(
     max_epochs=1, gpus=1, auto_lr_find=True)
 es_p = EarlyStoppingParams(
     monitor='val_loss', patience=2, verbose=True)
+LogCls = [TensorBoardLogger]
+log_p = [LoggerParams(save_dir="./lightning_logs")]
 
 # import pytorch_lightning as pl
 # from pytorch_lightning.loggers import TensorBoardLogger
 
 # tmp = pl.Trainer(logger=TensorBoardLogger("./"))
-
 exp = Experimentator(
     models_params=models_params,
     datasets_params=datasets_params,
     trainer_params=tr_p,
     checkpoint_params=chp_p,
     early_stopping_params=es_p,
-    LoggersClasses=[TensorBoardLogger],
-    loggers_params=[LoggerParams(save_dir="./lightning_logs")]
+    LoggersClasses=LogCls,
+    loggers_params=log_p
 )
 
 # exp.run_experiments(
 #     experiments_path="./saved_experiments", safe=False, continue_run=False)
 
+# pvae
+# exp = load_experimentator(
+#     "./saved_experiments/2022-01-06_19:51:39.pkl")
+
 # pae
-exp = load_experimentator(
-    "./saved_experiments/2022-01-05_20:55:29.pkl")
+# exp = load_experimentator(
+#     "./saved_experiments/2022-01-05_20:55:29.pkl")
+# exp = load_experimentator(
+#     "./saved_experiments/2022-01-06_16:49:32.pkl")
 
 # ae
 # exp = load_experimentator(
 #     "./saved_experiments/2022-01-04_23:45:30.pkl")
 
 # vae
-# exp = load_experimentator(
-#     "./saved_experiments/2022-01-04_22:42:59.pkl")
+exp = load_experimentator(
+    "./saved_experiments/2022-01-06_21:33:23.pkl")
 
 # lstm example
 # exp = load_experimentator(
@@ -240,8 +251,10 @@ tsm = exp.load_time_series_module(0)
 
 # =============================================================================
 
-normal_dfs = tsm.get_data_from_range(start=-10000, end=-3000, copy=True)
-anomaly_dfs = tsm.get_data_from_range(start=-3000, copy=True)
+# normal_dfs = tsm.get_data_from_range(start=-10000, end=-3000, copy=True)
+# anomaly_dfs = tsm.get_data_from_range(start=-3000, copy=True)
+normal_dfs = tsm.get_data_from_range(start=-800, end=-400, copy=True)
+anomaly_dfs = tsm.get_data_from_range(start=-400, copy=True)
 
 apply_noise_on_dataframes(
     anomaly_dfs, make_noise=white_noise, negativity="abs", loc=1, scale=0.35)
@@ -255,17 +268,33 @@ apply_noise_on_dataframes(
 #     model, target_cols_ids=tsm.target_cols_ids())
 
 
-
-
 model2 = exp.load_pl_model(
     model_idx=0,
-    dir_path="./checkpoints/household_power_consumption/LSTMPAE_h200_l1"
+    dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1",
+    # file_name="2022-01-06_19:51:39.ckpt",
+    # dir_path="./checkpoints",
+    # file_name="epoch=0-step=23542",
+    find_last=False
 )
+
+# model2.sigma_tuning_coef = 0.2
+# model2.enable_sigma_tuning()
+
+# model2 = get_trained_pl_model(model2, tsm, tr_p, chp_p, es_p, log_p, LogCls)
+
+# apply_noise_on_dataframes(
+#     tsm.sequences, make_noise=white_noise, negativity="abs", loc=0, scale=0.20)
+
+# model2 = get_trained_pl_model(model2, tsm, tr_p, chp_p, es_p, log_p, LogCls)
+
+error_regresor = NNRegressor.load_from_checkpoint(
+    checkpoint_path="./notebooks/z_nn.ckpt", c_in=200, h_sizes=[128, 256])
 
 # ad2 = ReconstructionAnomalyDetector(
 # ad2 = EmbeddingAnomalyDetector(
-ad2 = ReconstructionDistributionAnomalyDetector(
-    model2, target_cols_ids=tsm.target_cols_ids())
+ad2 = ReconstructionAndEmbeddingAnomalyDetector(
+    model2, target_cols_ids=tsm.target_cols_ids(),
+    error_regressor=error_regresor, regressor_coef=1.5)
 
 
 ad2.fit(
@@ -280,7 +309,7 @@ ad2.fit(
         batch_size=tsm.batch_size),
     # class_weight=None,
     verbose=True, plot_time_series=True,
-    # plot_embeddings=True,
+    plot_embeddings=True,
 )
 
 # ad2.find_anomalies(tsm.test_dataloader())

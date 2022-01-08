@@ -1,5 +1,5 @@
 from .base import AnomalyDetector
-from predpy.wrapper import TSModelWrapper
+from predpy.wrapper import ModelWrapper
 import torch
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ from predpy.dataset import MultiTimeSeriesDataloader
 class PredictionAnomalyDetector(AnomalyDetector):
     def __init__(
         self,
-        time_series_model: TSModelWrapper,
+        time_series_model: ModelWrapper,
         distributor: Distributor = Gaussian(),
     ):
         super().__init__(

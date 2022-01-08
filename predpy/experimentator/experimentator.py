@@ -28,7 +28,7 @@ import os
 from dataclasses import asdict
 import torch
 
-from predpy.wrapper import Autoencoder, TSModelWrapper
+from predpy.wrapper import Autoencoder, ModelWrapper
 from predpy.data_module import MultiTimeSeriesModule
 from predpy.preprocessing import load_and_preprocess
 from predpy.trainer import get_trained_pl_model
@@ -494,7 +494,7 @@ class Experimentator:
         dataset_idx: int = None,
         tsm: MultiTimeSeriesModule = None,
         load_state: bool = False
-    ) -> TSModelWrapper:
+    ) -> ModelWrapper:
         """Train single model on single dataset from experimentator data.
 
         Parameters

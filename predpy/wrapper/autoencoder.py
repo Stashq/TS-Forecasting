@@ -12,11 +12,11 @@ from tqdm.auto import tqdm
 import pandas as pd
 import numpy as np
 
-from .base import TSModelWrapper
+from .base import ModelWrapper
 from predpy.dataset import MultiTimeSeriesDataloader
 
 
-class Autoencoder(TSModelWrapper):
+class Autoencoder(ModelWrapper):
     """Lightning module with functionalities for time series prediction
     models.\n
 

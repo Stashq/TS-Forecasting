@@ -1,5 +1,5 @@
 from .reconstruction import ReconstructionAnomalyDetector
-from predpy.wrapper import TSModelWrapper
+from predpy.wrapper import ModelWrapper
 import torch
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from scipy.stats import norm
 class ReconstructionDistributionAnomalyDetector(ReconstructionAnomalyDetector):
     def __init__(
         self,
-        time_series_model: TSModelWrapper,
+        time_series_model: ModelWrapper,
         distributor: Distributor = Gaussian(),
         target_cols_ids: List[int] = None,
         alpha: float = 0.9

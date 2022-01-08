@@ -13,7 +13,7 @@ import torch
 from torch import nn, optim
 
 # from predpy.dataset import TimeSeriesDataset
-from predpy.wrapper import TSModelWrapper, Predictor
+from predpy.wrapper import ModelWrapper, Predictor
 # from predpy.dataset import MultiTimeSeriesDataset
 
 
@@ -61,7 +61,7 @@ class ModelParams:
     name_: str
     cls_: torch.nn.Module
     init_params: Dict
-    WrapperCls: Type[TSModelWrapper] = None
+    WrapperCls: Type[ModelWrapper] = None
     wrapper_kwargs: Dict[str, Any] = field(default_factory=dict)
     learning_params: LearningParams = field(default_factory=LearningParams)
 
