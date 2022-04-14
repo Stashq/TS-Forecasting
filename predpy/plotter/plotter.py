@@ -108,18 +108,59 @@ def ts_to_plotly_data(
     name: str,
     version: str = "",
     set_gaps: bool = True,
-    is_ae: bool = False
+    is_ae: bool = False,
+    is_boundries: bool = False
 ) -> List[go.Scatter]:
     if set_gaps:
         ts = _set_gaps(ts)
 
-    if isinstance(ts, pd.Series):
+    if is_boundries:
+        data = _boundries_to_scatters(ts, name=name, version=version)
+    elif isinstance(ts, pd.Series):
         data = _series_to_scatter(ts, name=name, version=version)
     elif isinstance(ts, pd.DataFrame) and is_ae:
         data = _reconstruction_quantiles_to_scatters(
             ts, name=name, version=version)
     elif isinstance(ts, pd.DataFrame) and is_ae is False:
         data = _preds_to_scatters(ts, name=name, version=version)
+    return data
+
+
+def _boundries_to_scatters(
+    boundries: pd.DataFrame, name: str = "Boundries", version: str = ""
+) -> List[go.Scatter]:
+    group_id = np.random.randint(9999999999, size=1)[0]
+    columns = set([col[:-6] for col in boundries.columns])
+    rgb = np.random.randint(256, size=3)
+
+    data = []
+    for col in columns:
+        data += [
+            # go.Scatter(
+            #     legendgroup=str(group_id),
+            #     legendgrouptitle_text=col + " boundries",),
+            go.Scatter(
+                x=boundries.index.tolist(),
+                y=boundries[col + "_lower"],
+                line=dict(color='rgba(255, 255, 255, 0)'),
+                hoverinfo="skip",
+                legendgrouptitle_text=col + " boundries",
+                # showlegend=False,
+                legendgroup=str(group_id),
+                name="lower"
+            ),
+            go.Scatter(
+                x=boundries.index.tolist(),
+                y=boundries[col + "_upper"],
+                fill='tonexty',
+                fillcolor=f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.4)',
+                line=dict(color='rgba(255, 255, 255, 0)'),
+                hoverinfo="skip",
+                # showlegend=False,
+                legendgroup=str(group_id),
+                name="upper"
+            ),
+        ]
     return data
 
 
@@ -296,11 +337,11 @@ def _get_target_columns_ids(
 ) -> List[int]:
     result = []
     if isinstance(target_name, str):
-        idx = np.where(scaler.feature_names_in_ == target_name)[0][0]
+        idx = np.where(scaler.get_feature_names_out() == target_name)[0][0]
         result = [idx]
     elif isinstance(target_name, list):
         for t in target_name:
-            idx = np.where(scaler.feature_names_in_ == t)[0][0]
+            idx = np.where(scaler.get_feature_names_out() == t)[0][0]
             result += [idx]
     return result
 
@@ -321,7 +362,7 @@ def _scale_inverse(
         mocked_column = [0] * time_series.shape[0]
         scaler_input = []
 
-        for scaler_feature in scaler.feature_names_in_:
+        for scaler_feature in scaler.get_feature_names_out():
             if scaler_feature in time_series.columns:
                 scaler_input += [time_series[scaler_feature].tolist()]
             else:
@@ -435,7 +476,7 @@ def plot_predictions(
         models_names=models_names, scaler=scaler, are_ae=are_ae)
     layout = go.Layout(
         title=title,
-        yaxis=dict(title=target),
+        yaxis=dict(title=str(target)),
         xaxis=dict(title='dates')
     )
 
@@ -460,7 +501,7 @@ def plot_exp_predictions(
     ).tolist()
     plot_predictions(
         predictions=exp.get_models_predictions(dataset_idx, models_ids),
-        true_vals=d_params.true_vals, target=d_params.target,
+        true_vals=d_params.true_values, target=d_params.target,
         models_names=models_names, scaler=d_params.scaler,
         title=d_params.name_, are_ae=are_ae, file_path=file_path)
 
@@ -543,6 +584,7 @@ def plot_anomalies(
     true_anomalies: Union[pd.Series, pd.DataFrame] = None,
     true_anomalies_intervals: Union[pd.Series, pd.DataFrame] = None,
     predictions: pd.DataFrame = None,
+    detector_boundries: pd.DataFrame = None,
     # target: str = None,
     # scaler: TransformerMixin = None,
     is_ae: bool = False,
@@ -562,6 +604,9 @@ def plot_anomalies(
             vals=pred_anomalies, color=TRUE_ANOMALIES_COLOR,
             label="true anomalies"
         )
+    if detector_boundries is not None:
+        data += ts_to_plotly_data(
+            detector_boundries, "Boundries", is_boundries=True)
     #     data += preds_and_true_vals_to_scatter_data(
     #         true_vals=time_series, predictions=predictions, target=target,
     #         models_names=[model_name], scaler=scaler, are_ae=[is_ae])

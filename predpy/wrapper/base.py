@@ -4,6 +4,7 @@ To work properly, dataset module __getitem__ method should return
 dictionary with model input sequence named "sequence" and following after
 it target value named "label". Compatibile with :py:mod:`dataset`.
 """
+import numpy as np
 import pandas as pd
 from pytorch_lightning import LightningModule
 from torch import nn, optim
@@ -96,9 +97,9 @@ class ModelWrapper(LightningModule, ABC):
         pass
 
     @abstractmethod
-    def preds_to_dataframe(
+    def preds_to_df(
         self,
         dataloader: MultiTimeSeriesDataloader,
-        preds: torch.Tensor
+        preds: np.ndarray
     ) -> pd.DataFrame:
         pass

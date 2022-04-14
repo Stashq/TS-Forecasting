@@ -68,7 +68,7 @@ class ReconstructionDistributionAnomalyDetector(ReconstructionAnomalyDetector):
         errors = torch.abs(seqs - x_mu).cpu().detach().numpy()
 
         if return_predictions:
-            x_mu_df = self.time_series_model.preds_to_dataframe(
+            x_mu_df = self.time_series_model.preds_to_df(
                 dataloader, x_mu.numpy())
             return errors, x_mu, x_log_sig, x_mu_df
         return errors, x_mu, x_log_sig

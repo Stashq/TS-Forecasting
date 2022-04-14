@@ -24,8 +24,8 @@ class Encoder(nn.Module):
         )
 
     def forward(self, x):
-        emb, (_, _) = self.lstm(x)
-        return emb
+        _, (h_n, _) = self.lstm(x)
+        return h_n[-1]
 
 
 class Decoder(nn.Module):
@@ -71,11 +71,12 @@ class LSTMVAE(nn.Module):
 
     def forward(self, x: torch.Tensor):
         z, z_mu, z_log_sig = self.encode(x, return_all=True)
-        x_tilda = self.decode(z)
+        x_tilda = self.decode(z, seq_len=x.shape[1])
         return (x_tilda, z_mu, z_log_sig)
 
-    def decode(self, z):
-        x_tilda = self.decoder(z)
+    def decode(self, z, seq_len: int):
+        z_repeated = z.unsqueeze(1).repeat(1, seq_len, 1)
+        x_tilda = self.decoder(z_repeated)
         return x_tilda
 
     def encode(self, x: torch.Tensor, return_all: bool = False):

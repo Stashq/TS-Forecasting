@@ -362,7 +362,7 @@ def fit_scaler(
     assert training_fraction <= 1, "Training fraction can't be greater than 1."
     margin = int(time_series.shape[0] * training_fraction)
 
-    scaler.fit(time_series[:margin])
+    scaler.fit(X=time_series[:margin])
 
 
 def scale(

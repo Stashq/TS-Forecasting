@@ -44,10 +44,11 @@ class VAE(Autoencoder):
         self.kld_weight = kld_weight
 
     def get_kld_loss(self, mu, log_sig):
-        return torch.mean(
+        loss = torch.mean(
             -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
             dim=0
         )
+        return loss
 
     def get_loss(
         self,

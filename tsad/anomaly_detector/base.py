@@ -282,8 +282,8 @@ class AnomalyDetector:
         anomalies: pd.DataFrame,
         time_series: MultiTimeSeriesDataloader,
     ):
-        def get_previous(index: pd.Series, idx: Union[int, timedelta]):
-            return index.iloc[index.get_loc(idx) - 1]
+        def get_previous(series: pd.Series, idx: Union[int, timedelta]):
+            return series.iloc[series.index.get_loc(idx) - 1]
         step = time_series.dataset.sequences[0]\
             .index.to_series().diff().mode()[0]
 
@@ -298,10 +298,10 @@ class AnomalyDetector:
         else:
             intervals = [
                 (index.iloc[0],
-                 index.iloc[get_previous(index, splits[0])])]
+                 get_previous(index, splits[0]))]
             intervals += [
                 (splits[i],
-                 index.iloc[get_previous(index, splits[i+1])])
+                 get_previous(index, splits[i+1]))
                 for i in range(len(splits)-1)
             ]
             intervals += [(splits[-1], index.iloc[-1])]
@@ -343,6 +343,7 @@ class AnomalyDetector:
             true_anomalies=true_anom,
             true_anomalies_intervals=true_anom_intervals,
             predictions=model_preds,
+            detector_boundries=detector_boundries,
             is_ae=issubclass(type(self.time_series_model), Autoencoder),
             title=title, file_path=file_path
         )
@@ -364,7 +365,7 @@ class AnomalyDetector:
         plot_embeddings=False,
         plot_distribution=False,
         n_res=None, a_res=None,
-        n_pred_errs=None, a_pred_errs=None,
+        n_boundries=None, a_boundries=None,
         classes=None, pred_cls=None,
         n_data=None, a_data=None,
         model_n_ts_preds=None, model_a_ts_preds=None,
@@ -377,7 +378,7 @@ class AnomalyDetector:
                 pred_anomalies_ids=np.argwhere(
                     pred_cls[:len(n_res)] == 1).T[0],
                 model_preds=model_n_ts_preds,
-                detector_boundries=n_pred_errs,
+                detector_boundries=n_boundries,
                 anomalies_as_intervals=anomalies_as_intervals,
                 title="Detecting anomalies on normal data"
             )
@@ -387,7 +388,7 @@ class AnomalyDetector:
                     pred_cls[len(n_res):] == 1).T[0],
                 true_anomalies_ids=list(range(0, len(a_res))),
                 model_preds=model_a_ts_preds,
-                detector_boundries=a_pred_errs,
+                detector_boundries=a_boundries,
                 anomalies_as_intervals=anomalies_as_intervals,
                 title="Detecting anomalies on anomaly data"
             )

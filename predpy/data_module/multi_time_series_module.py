@@ -250,7 +250,7 @@ class MultiTimeSeriesModule(LightningDataModule):
 
                 test_start = val_end + overlap
                 test_end = int(test_start + n_records * split_proportions[2])
-                self.test_range = (test_start, test_end)
+                self.test_range = (test_start, test_end - 1)
             elif len(split_proportions) == 2:
                 # validation and test datasets will be same
                 val_test_start = train_end + overlap

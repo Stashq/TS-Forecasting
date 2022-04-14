@@ -113,11 +113,11 @@ models_params = [
     #     name_="LSTM_h400_l4", cls_=RNN.LSTM,
     #     init_params={
     #         "c_in": c_in, "c_out": c_out, "hidden_size": 400, "n_layers": 4}),
-    # ModelParams(
-    #     name_="LSTMAE_h200_l1", cls_=LSTMAE,
-    #     init_params=dict(
-    #         c_in=window_size, h_size=200, n_layers=1),
-    #     WrapperCls=Autoencoder),
+    ModelParams(
+        name_="LSTMAE_h200_l1", cls_=LSTMAE,
+        init_params=dict(
+            c_in=window_size, h_size=200, n_layers=1),
+        WrapperCls=Autoencoder),
     ModelParams(
         name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
         init_params=dict(
@@ -140,10 +140,6 @@ es_p = EarlyStoppingParams(
 LogCls = [TensorBoardLogger]
 log_p = [LoggerParams(save_dir="./lightning_logs")]
 
-# import pytorch_lightning as pl
-# from pytorch_lightning.loggers import TensorBoardLogger
-
-# tmp = pl.Trainer(logger=TensorBoardLogger("./"))
 exp = Experimentator(
     models_params=models_params,
     datasets_params=datasets_params,
@@ -152,6 +148,44 @@ exp = Experimentator(
     early_stopping_params=es_p,
     LoggersClasses=LogCls,
     loggers_params=log_p
+)
+
+
+tsm = load_experimentator(
+    "./saved_experiments/2022-01-04_23:45:30.pkl")\
+    .load_time_series_module(0)
+normal_dfs = tsm.get_data_from_range(start=-10000, end=-3000, copy=True)
+anomaly_dfs = tsm.get_data_from_range(start=-3000, copy=True)
+apply_noise_on_dataframes(
+    anomaly_dfs, make_noise=white_noise, negativity="abs", loc=1, scale=0.35);
+normal_data = MultiTimeSeriesDataloader(
+    normal_dfs, tsm.window_size, tsm.target,
+    batch_size=tsm.batch_size)
+anomaly_data = MultiTimeSeriesDataloader(
+    anomaly_dfs, tsm.window_size, tsm.target,
+    batch_size=tsm.batch_size)
+
+model = load_experimentator(
+    "./saved_experiments/2022-01-06_21:33:23.pkl")\
+    .load_pl_model(
+    model_idx=0,
+    dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1",
+    # file_name="2022-01-06_19:51:39.ckpt",
+    # dir_path="./checkpoints",
+    # file_name="epoch=0-step=23542",
+    find_last=False
+)
+
+
+anomaly_detector = EmbeddingAnomalyDetector(
+    model, target_cols_ids=tsm.target_cols_ids(),)
+anomaly_detector.fit(
+    train_data=normal_data,
+    anomaly_data=anomaly_data,
+    normal_data=normal_data,
+    # class_weight=None,
+    verbose=True, plot_time_series=True,
+    plot_embeddings=True,
 )
 
 # exp.run_experiments(
@@ -164,16 +198,16 @@ exp = Experimentator(
 # pae
 # exp = load_experimentator(
 #     "./saved_experiments/2022-01-05_20:55:29.pkl")
-# exp = load_experimentator(
-#     "./saved_experiments/2022-01-06_16:49:32.pkl")
+exp = load_experimentator(
+    "./saved_experiments/2022-01-06_16:49:32.pkl")
 
 # ae
 # exp = load_experimentator(
 #     "./saved_experiments/2022-01-04_23:45:30.pkl")
 
 # vae
-exp = load_experimentator(
-    "./saved_experiments/2022-01-06_21:33:23.pkl")
+# exp = load_experimentator(
+#     "./saved_experiments/2022-01-06_21:33:23.pkl")
 
 # lstm example
 # exp = load_experimentator(
@@ -251,10 +285,10 @@ tsm = exp.load_time_series_module(0)
 
 # =============================================================================
 
-# normal_dfs = tsm.get_data_from_range(start=-10000, end=-3000, copy=True)
-# anomaly_dfs = tsm.get_data_from_range(start=-3000, copy=True)
-normal_dfs = tsm.get_data_from_range(start=-800, end=-400, copy=True)
-anomaly_dfs = tsm.get_data_from_range(start=-400, copy=True)
+normal_dfs = tsm.get_data_from_range(start=-10000, end=-3000, copy=True)
+anomaly_dfs = tsm.get_data_from_range(start=-3000, copy=True)
+# normal_dfs = tsm.get_data_from_range(start=-800, end=-400, copy=True)
+# anomaly_dfs = tsm.get_data_from_range(start=-400, copy=True)
 
 apply_noise_on_dataframes(
     anomaly_dfs, make_noise=white_noise, negativity="abs", loc=1, scale=0.35)
@@ -287,14 +321,24 @@ model2 = exp.load_pl_model(
 
 # model2 = get_trained_pl_model(model2, tsm, tr_p, chp_p, es_p, log_p, LogCls)
 
-error_regresor = NNRegressor.load_from_checkpoint(
-    checkpoint_path="./notebooks/z_nn.ckpt", c_in=200, h_sizes=[128, 256])
 
-# ad2 = ReconstructionAnomalyDetector(
+ad2 = ReconstructionAnomalyDetector(
+    model2, target_cols_ids=tsm.target_cols_ids(),)
+
+
 # ad2 = EmbeddingAnomalyDetector(
-ad2 = ReconstructionAndEmbeddingAnomalyDetector(
-    model2, target_cols_ids=tsm.target_cols_ids(),
-    error_regressor=error_regresor, regressor_coef=1.5)
+
+# vae + embeddings
+# model2 = exp.load_pl_model(
+#     model_idx=0,
+#     dir_path="./checkpoints/household_power_consumption/LSTMVAE_h200_l1",
+#     find_last=False
+# )
+# error_regresor = NNRegressor.load_from_checkpoint(
+#     checkpoint_path="./notebooks/z_nn.ckpt", c_in=200, h_sizes=[128, 256])
+# ad2 = ReconstructionAndEmbeddingAnomalyDetector(
+#     model2, target_cols_ids=tsm.target_cols_ids(),
+#     error_regressor=error_regresor, regressor_a_coef=3, regressor_b_coef=0.08)
 
 
 ad2.fit(

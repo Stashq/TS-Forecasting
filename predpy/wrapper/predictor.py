@@ -72,9 +72,9 @@ class Predictor(ModelWrapper):
             preds =\
                 scaler.inverse_transform([preds]).tolist()
 
-        return self.preds_to_dataframe(dataloader, preds)
+        return self.preds_to_df(dataloader, preds)
 
-    def preds_to_dataframe(
+    def preds_to_df(
         self,
         dataloader: MultiTimeSeriesDataloader,
         preds: np.ndarray

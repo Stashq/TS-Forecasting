@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Union, Tuple, List, Dict
+from string import Template
 
 from tqdm.auto import tqdm
 import pandas as pd
@@ -18,6 +19,8 @@ NO_EMBEDDING_MODEL_MSG = "No embedding model found. Define error regressor "
 "model or embedding distributor."
 BOTH_MODELS_MSG = "Detected embedding distributor. "
 "Only error regressor will be used."
+UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
+Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
 
 
 class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
@@ -27,7 +30,8 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
         distributor: Distributor = Gaussian(),
         target_cols_ids: List[int] = None,
         error_regressor: Regressor = None,
-        regressor_coef: float = 1.0,
+        regressor_a_coef: float = 1.0,
+        regressor_b_coef: float = 0.05,
         embeddings_distributor: Distributor = None
     ):
         super().__init__(
@@ -35,7 +39,8 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
         self.target_cols_ids = target_cols_ids
         self.error_regressor = error_regressor
         self.embeddings_distributor = embeddings_distributor
-        self.regressor_coef = regressor_coef
+        self.regressor_a_coef = regressor_a_coef
+        self.regressor_b_coef = regressor_b_coef
 
     def get_seqences(self, batch):
         if next(self.time_series_model.parameters()).is_cuda:
@@ -69,7 +74,8 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
         self,
         dataloader: MultiTimeSeriesDataloader,
         verbose: bool = True,
-        return_predictions: bool = False
+        return_quantiles_predictions: bool = False,
+        return_raw_predictions: bool = False
     ) -> Union[np.ndarray, Tuple[np.ndarray, pd.DataFrame]]:
         iterator = None
         if verbose:
@@ -96,11 +102,17 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
         seqs = torch.cat(seqs, 0)
         errors = torch.abs(seqs - preds).cpu().detach().numpy()
 
-        if return_predictions:
-            preds = self.time_series_model.preds_to_dataframe(
-                dataloader, preds.numpy())
-            return errors, zs, preds
-        return errors, zs
+        result = [errors, zs]
+        if return_quantiles_predictions or return_raw_predictions:
+            preds = self.time_series_model.preds_to_df(
+                dataloader, preds.numpy(),
+                return_quantiles=return_quantiles_predictions,
+                return_raw_preds=return_raw_predictions)
+            if isinstance(preds, list):
+                result += preds
+            else:
+                result += [preds]
+        return result
 
     def fit_distributor(
         self,
@@ -108,7 +120,7 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
         verbose: bool = False,
         **kwargs
     ):
-        result, _ = self._any_forward(data, verbose=verbose)
+        result, _ = self.dataset_forward(data, verbose=verbose)
         self.distributor.fit(result, verbose=verbose, **kwargs)
 
     def fit_threshold(
@@ -134,10 +146,12 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
             Normal data (0) and anomaly (1) weights,
             by default {0: 0.05, 1: 0.95}.
         """
-        n_errs, n_z, n_preds = self._any_forward(
-            normal_data, verbose, return_predictions=True)
-        a_errs, a_z, a_preds = self._any_forward(
-            anomaly_data, verbose, return_predictions=True)
+        n_errs, n_z, n_preds, n_raw_preds = self.dataset_forward(
+            normal_data, verbose, return_quantiles_predictions=True,
+            return_raw_predictions=True)
+        a_errs, a_z, a_preds, a_raw_preds = self.dataset_forward(
+            anomaly_data, verbose, return_quantiles_predictions=True,
+            return_raw_predictions=True)
         classes = [0]*len(n_errs) + [1]*len(a_errs)
         probs = self._fit_thresholders(
             n_errs, a_errs, class_weight, classes, n_z, a_z)
@@ -158,42 +172,59 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
         cm = confusion_matrix(classes, pred_cls)
         print(cm)
 
+        window_size = normal_data.dataset.window_size
+        n_boundries = self._get_detector_boundries(
+            n_raw_preds, n_pred_errs, window_size=window_size)
+        a_boundries = self._get_detector_boundries(
+            a_raw_preds, a_pred_errs, window_size=window_size)
+
         self._plot_fit_results(
             plot_time_series=plot_time_series,
             plot_embeddings=plot_embeddings,
             plot_distribution=plot_distribution,
             n_res=n_errs, a_res=a_errs,
-            n_pred_errs=n_pred_errs, a_pred_errs=a_pred_errs,
+            n_boundries=n_boundries, a_boundries=a_boundries,
             classes=classes, pred_cls=pred_cls,
             n_data=normal_data, a_data=anomaly_data,
             model_n_ts_preds=n_preds,
             model_a_ts_preds=a_preds,
             n_embs=n_z, a_embs=a_z)
-        # if plot_distribution:
-        #     self.plot_gaussian_result(
-        #         vals=np.concatenate([
-        #             n_errs, a_errs]),
-        #         classes=classes,
-        #         title="Result of fitting")
-        # if plot_time_series:
-        #     self.plot_with_time_series(
-        #         time_series=normal_data,
-        #         pred_anomalies_ids=np.argwhere(
-        #             pred_cls[:len(n_errs)] == 1).T[0],
-        #         model_preds=n_preds,
-        #         title="Detecting anomalies on normal data"
-        #     )
-        #     self.plot_with_time_series(
-        #         time_series=anomaly_data,
-        #         pred_anomalies_ids=np.argwhere(
-        #             pred_cls[len(n_errs):] == 1).T[0],
-        #         true_anomalies_ids=list(range(0, len(a_errs))),
-        #         model_preds=a_preds,
-        #         title="Detecting anomalies on anomaly data"
-        #     )
-        # if plot_embeddings:
-        #     self.plot_embeddings(
-        #         np.concatenate([n_z, a_z], axis=0), classes)
+
+    def _get_detector_boundries(
+        self,
+        raw_preds: pd.DataFrame,
+        pred_errs: np.ndarray,
+        window_size: int
+    ):
+        if isinstance(raw_preds, torch.Tensor):
+            raw_preds = raw_preds.cpu().detach().numpy()
+        boundries_df = pd.DataFrame(
+            raw_preds.index, columns=["datetime"])\
+            .set_index("datetime", drop=True)
+
+        boundries_df["pred_err"] = np.repeat(pred_errs, window_size)
+        columns = raw_preds.columns
+
+        for col in columns:
+            sigma = self.regressor_a_coef * boundries_df["pred_err"]\
+                + self.regressor_b_coef
+            boundries_df[col + "_lower"] = raw_preds[col] - sigma
+            boundries_df[col + "_upper"] = raw_preds[col] + sigma
+
+        res = pd.DataFrame(
+            raw_preds.index.unique(), columns=["datetime"])\
+            .set_index("datetime", drop=True)
+
+        for col in columns:
+            grouped = boundries_df.groupby(boundries_df.index)
+            res[col + "_lower"] = grouped[col + "_lower"].max()
+            res[col + "_upper"] = grouped[col + "_upper"].min()
+            # df[col + "_q000"] = grouped.quantile(0.0)
+            # df[col + "_q025"] = grouped.quantile(0.25)
+            # df[col + "_q050"] = grouped.quantile(0.5)
+            # df[col + "_q075"] = grouped.quantile(0.75)
+            # df[col + "_q100"] = grouped.quantile(1.0)
+        return res
 
     def _fit_thresholders(
         self, n_errs, a_errs, class_weight, classes, n_z=None, a_z=None
@@ -232,9 +263,12 @@ class ReconstructionAndEmbeddingAnomalyDetector(AnomalyDetector):
                 embs = torch.tensor(embs)
             pred_errs = self.error_regressor.predict(embs)
             for i, pred_err in enumerate(pred_errs):
-                res = (self.regressor_coef*errs[i] < pred_err).all()
+                sigma = self.regressor_a_coef * pred_err\
+                    + self.regressor_b_coef
+                res = not (errs[i] < sigma).all()
                 classes += [int(res)]
             classes = np.array(classes)
+
         elif self.embeddings_distributor is not None:
             probs = self.embeddings_distributor.predict(embs)
             classes = self.embeddings_thresholder.predict(probs)

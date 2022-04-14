@@ -163,9 +163,7 @@ class Experimentator:
             dataset_path=ds_params.path,
             load_params=ds_params.load_params,
             drop_pipeline=ds_params.drop_refill_pipeline,
-            resample_params=dict(
-                resampler_method_str="fillna", rule="1min", resample_kwargs={},
-                resampler_method_kwargs=dict(method="backfill")),
+            resample_params=ds_params.resample_params,
             preprocessing_pipeline=ds_params.preprocessing_pipeline,
             detect_anomalies_pipeline=ds_params.detect_anomalies_pipeline,
             undo_resample_before_interpolation=True,

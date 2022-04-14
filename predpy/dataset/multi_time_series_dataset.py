@@ -197,7 +197,11 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
 
     def __getitem__(self, idx: int) -> Dict[torch.Tensor, torch.Tensor]:
         """Returns dict of:
-        * sequence - sequence starting from indicated position,
+        * sequence - sequence starting from indicated position
+        with shape (N, L, H_in) where:
+            - N = batch size
+            - L = sequence length
+            - H_in = input size
         * label - target value/-s followed after sequence.
 
         Parameters
@@ -212,7 +216,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         """
         seq, label = self.get_record(idx)
         return dict(
-            sequence=torch.tensor(seq.to_numpy().T).float(),
+            sequence=torch.tensor(seq.to_numpy()).float(),
             label=torch.tensor(label).float()
         )
 
@@ -296,7 +300,9 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             seq[self.target].iloc[self.window_size:] for seq in seqs])
         return labels
 
-    def get_indices_like_recs(self, labels: bool = True):
+    def get_indices_like_recs(
+        self, labels: bool = True
+    ) -> Union[pd.Series, List[pd.Series]]:
         """Return indices of data as they would be records
         """
         indices = []

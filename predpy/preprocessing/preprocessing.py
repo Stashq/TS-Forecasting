@@ -189,12 +189,12 @@ def loc(
 
 def iloc(
     time_series,
-    rows_ids: List[Any] = None,
-    columns_ids: List[Any] = None,
-    rows_start: Any = None,
-    rows_end: Any = None,
-    columns_start: Any = None,
-    columns_end: Any = None
+    rows_ids: List[int] = None,
+    columns_ids: List[int] = None,
+    rows_start: int = None,
+    rows_end: int = None,
+    columns_start: int = None,
+    columns_end: int = None
 ) -> pd.DataFrame:
     # set ranges
     # if rows_start is None:

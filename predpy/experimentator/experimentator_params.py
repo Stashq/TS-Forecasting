@@ -39,7 +39,7 @@ class DatasetParams:
     scaler: TransformerMixin = None
     true_values: List[float] = None
     name_: str = None
-
+    resample_params: Dict = None
     # def __post_init__(self):
     #     if self.DatasetCls is None:
     #         self.DatasetCls = MultiTimeSeriesDataset

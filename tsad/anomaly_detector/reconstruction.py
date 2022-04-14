@@ -73,7 +73,7 @@ class ReconstructionAnomalyDetector(AnomalyDetector):
         errors = torch.abs(seqs - preds).cpu().detach().numpy()
 
         if return_predictions:
-            preds = self.time_series_model.preds_to_dataframe(
+            preds = self.time_series_model.preds_to_df(
                 dataloader, preds.numpy())
             return errors, preds
         return errors
