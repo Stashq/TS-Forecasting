@@ -2,6 +2,7 @@ from typing import List, Tuple, Union
 import pandas as pd
 import plotly.graph_objs as go
 from plotly.offline import plot
+from plotly.subplots import make_subplots
 from sklearn.base import TransformerMixin
 import numpy as np
 from datetime import timedelta, datetime
@@ -23,10 +24,13 @@ def _series_to_scatter(
 
 
 def _reconstruction_quantiles_to_scatters(
-    ts: pd.Series, name: str, version: str = ""
+    ts: pd.Series, name: str, version: str = "", col_name: str = None
 ) -> List[go.Scatter]:
     group_id = np.random.randint(9999999999, size=1)[0]
-    columns = set([col[:-5] for col in ts.columns])
+    if col_name is not None:
+        columns = [col_name]
+    else:
+        columns = set([col[:-5] for col in ts.columns])
     rgb = np.random.randint(256, size=3)
 
     # quantile: 50%
@@ -93,14 +97,20 @@ def _reconstruction_quantiles_to_scatters(
 
 
 def _preds_to_scatters(
-    ts: pd.Series, name: str, version: str = ""
+    ts: pd.Series, name: str, version: str = "", target: str = None
 ) -> List[go.Scatter]:
-    return [
-        go.Scatter(
-            x=ts.index, y=ts[col], connectgaps=False,
-            name=name + f"-{col}" + version)
-        for col in ts.columns
-    ]
+    columns = ts.columns
+    if target is not None:
+        columns = filter(lambda x: x == target, columns)
+
+    scatter_data = []
+    for col in columns:
+        scatter_data += [
+            go.Scatter(
+                x=ts.index, y=ts[col], connectgaps=False,
+                name=name + f"-{col}" + version)
+        ]
+    return scatter_data
 
 
 def ts_to_plotly_data(
@@ -109,7 +119,8 @@ def ts_to_plotly_data(
     version: str = "",
     set_gaps: bool = True,
     is_ae: bool = False,
-    is_boundries: bool = False
+    is_boundries: bool = False,
+    target: str = None
 ) -> List[go.Scatter]:
     if set_gaps:
         ts = _set_gaps(ts)
@@ -120,9 +131,10 @@ def ts_to_plotly_data(
         data = _series_to_scatter(ts, name=name, version=version)
     elif isinstance(ts, pd.DataFrame) and is_ae:
         data = _reconstruction_quantiles_to_scatters(
-            ts, name=name, version=version)
+            ts, name=name, version=version, col_name=target)
     elif isinstance(ts, pd.DataFrame) and is_ae is False:
-        data = _preds_to_scatters(ts, name=name, version=version)
+        data = _preds_to_scatters(
+            ts, name=name, version=version, target=target)
     return data
 
 
@@ -427,12 +439,12 @@ def preds_and_true_vals_to_scatter_data(
         are_ae = [False]*len(predictions)
 
     data = ts_to_plotly_data(
-        true_vals, "true_vals", version, is_ae=False)
+        true_vals, "true_vals", version, is_ae=False, target=target)
 
     for i, (_, row) in enumerate(predictions.iterrows()):
         data += ts_to_plotly_data(
             row["predictions"], models_names[i], version,
-            is_ae=are_ae[i])
+            is_ae=are_ae[i], target=target)
     return data
 
 
@@ -471,16 +483,30 @@ def plot_predictions(
         If type is string, chart will be saved to html file with provided
         path.
     """
-    data = preds_and_true_vals_to_scatter_data(
-        true_vals=true_vals, predictions=predictions, target=target,
-        models_names=models_names, scaler=scaler, are_ae=are_ae)
-    layout = go.Layout(
-        title=title,
-        yaxis=dict(title=str(target)),
-        xaxis=dict(title='dates')
-    )
+    # data = preds_and_true_vals_to_scatter_data(
+    #     true_vals=true_vals, predictions=predictions, target=target,
+    #     models_names=models_names, scaler=scaler, are_ae=are_ae)
+    # layout = go.Layout(
+    #     title=title,
+    #     yaxis=dict(title=str(target)),
+    #     xaxis=dict(title='dates')
+    # )
+    fig = make_subplots(rows=true_vals.shape[1], cols=1)
 
-    fig = go.Figure(data=data, layout=layout)
+    n_targets = true_vals.shape[1]
+    for target_i in range(n_targets):
+        target_col = str(true_vals.columns[target_i])
+        scatter_data = preds_and_true_vals_to_scatter_data(
+            true_vals=true_vals, predictions=predictions, target=target_col,
+            models_names=models_names, scaler=scaler, are_ae=are_ae)
+        for trace in scatter_data:
+            fig.add_trace(
+                trace, row=target_i+1, col=1
+            )
+        fig.update_xaxes(title_text='date', row=target_i+1, col=1)
+        fig.update_yaxes(title_text=target_col, row=target_i+1, col=1)
+
+    fig.update_layout(height=800 * n_targets, title_text=title)
     if file_path is not None:
         plot(fig, filename=file_path)
     else:
