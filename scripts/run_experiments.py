@@ -22,6 +22,7 @@ from predpy.trainer import (
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
 from models import LSTMAE, LSTMVAE
+from literature.AnomTrans import AnomalyTransformer, ATWrapper
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -64,11 +65,16 @@ c_in = 38
 c_out = 38
 
 models_params = [
+    # ModelParams(
+    #     name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
+    #     init_params=dict(
+    #         c_in=c_in, h_size=200, n_layers=1),
+    #     WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=0.005)),
     ModelParams(
-        name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
+        name_="AnomTrans", cls_=AnomalyTransformer,
         init_params=dict(
-            c_in=c_in, h_size=200, n_layers=1),
-        WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=0.005)),
+            N=window_size, d_model=c_in, layers=2, lambda_=0.5),
+        WrapperCls=ATWrapper),
 ]
 
 chp_p = CheckpointParams(
