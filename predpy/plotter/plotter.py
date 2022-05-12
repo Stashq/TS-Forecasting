@@ -9,7 +9,7 @@ from datetime import timedelta, datetime
 from predpy.experimentator import Experimentator
 from predpy.data_module import MultiTimeSeriesModule
 from .experimentator_plot import ExperimentatorPlot
-from predpy.wrapper import Autoencoder
+from predpy.wrapper import Reconstructor
 
 PREDICTED_ANOMALIES_COLOR = '#9467bd'
 TRUE_ANOMALIES_COLOR = '#d62728'
@@ -523,7 +523,7 @@ def plot_exp_predictions(
     ms_params = exp.models_params.loc[models_ids]
     models_names = ms_params["name_"].tolist()
     are_ae = ms_params["WrapperCls"].apply(
-        lambda x: issubclass(x, Autoencoder)
+        lambda x: issubclass(x, Reconstructor)
     ).tolist()
     plot_predictions(
         predictions=exp.get_models_predictions(dataset_idx, models_ids),
@@ -581,7 +581,7 @@ def plot_aggregated_predictions(
             m_params = exp.models_params.loc[models_ids]
             models_names = m_params["name_"].tolist()
             are_ae = m_params["WrapperCls"].apply(
-                lambda x: issubclass(x, Autoencoder)
+                lambda x: issubclass(x, Reconstructor)
             ).tolist()
             data += preds_and_true_vals_to_scatter_data(
                 true_vals=ds_params.true_values, predictions=predictions_df,
@@ -702,7 +702,7 @@ def pandas_to_scatter(
 def plot_3d_embeddings(
     embs_3d: np.ndarray,
     classes: List[int] = None,
-    title: str = "Autoencoder embeddings",
+    title: str = "Reconstructor embeddings",
     file_path: str = None
 ):
     if len(embs_3d.shape) != 2 or embs_3d.shape[1] != 3:

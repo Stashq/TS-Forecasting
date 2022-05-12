@@ -20,17 +20,20 @@ class AnomalyAttention(nn.Module):
 
         self.Q = self.K = self.V = self.sigma = torch.zeros((N, d_model))
 
-        self.P = torch.zeros((N, N))
-        self.S = torch.zeros((N, N))
+        # self.P = torch.zeros((N, N))
+        # self.S = torch.zeros((N, N))
 
     def forward(self, x):
 
         self.initialize(x)
-        self.P = self.prior_association()
-        self.S = self.series_association()
-        Z = self.reconstruction()
+        # self.P = self.prior_association()
+        # self.S = self.series_association()
+        P = self.prior_association()
+        S = self.series_association()
+        # Z = self.reconstruction()
+        Z = self.reconstruction(S)
 
-        return Z
+        return Z, P, S
 
     def initialize(self, x):
         self.Q = self.Wq(x)
@@ -62,8 +65,9 @@ class AnomalyAttention(nn.Module):
             (self.Q @ self.K.transpose(1, 2)) / math.sqrt(self.d_model),
             dim=0)
 
-    def reconstruction(self):
-        return self.S @ self.V
+    def reconstruction(self, S):
+        # return self.S @ self.V
+        return S @ self.V
 
 
 class AnomalyTransformerBlock(nn.Module):
@@ -79,14 +83,14 @@ class AnomalyTransformerBlock(nn.Module):
 
     def forward(self, x):
         x_identity = x
-        x = self.attention(x)
+        x, p, s = self.attention(x)
         z = self.ln1(x + x_identity)
 
         z_identity = z
         z = self.ff(z)
         z = self.ln2(z + z_identity)
 
-        return z
+        return z, p, s
 
 
 class AnomalyTransformer(nn.Module):
@@ -101,16 +105,20 @@ class AnomalyTransformer(nn.Module):
         )
         self.lambda_ = lambda_
 
-        self.P_layers = []
-        self.S_layers = []
+        # self.P_layers = []
+        # self.S_layers = []
 
     def forward(self, x):
+        P_layers = []
+        S_layers = []
         for idx, block in enumerate(self.blocks):
-            x = block(x)
-            self.P_layers.append(block.attention.P)
-            self.S_layers.append(block.attention.S)
+            x, p, s = block(x)
+            # self.P_layers.append(block.attention.P)
+            # self.S_layers.append(block.attention.S)
+            P_layers.append(p)
+            S_layers.append(s)
 
-        return x
+        return x, P_layers, S_layers
 
     def layer_association_discrepancy(self, Pl, Sl, x):
         def rowwise_kl(row):

@@ -1,7 +1,7 @@
 from tsad.distributor import Distributor, Gaussian
 from predpy.wrapper import ModelWrapper
 from predpy.dataset import MultiTimeSeriesDataloader
-from predpy.wrapper import Autoencoder
+from predpy.wrapper import Reconstructor
 from predpy.plotter.plotter import plot_anomalies, plot_3d_embeddings
 
 import torch
@@ -269,7 +269,7 @@ class AnomalyDetector:
         anom_ids: List[int],
         time_series: MultiTimeSeriesDataloader,
     ):
-        if issubclass(type(self.time_series_model), Autoencoder):
+        if issubclass(type(self.time_series_model), Reconstructor):
             df = time_series.dataset.global_ids_to_data(
                 anom_ids)
         else:
@@ -344,7 +344,7 @@ class AnomalyDetector:
             true_anomalies_intervals=true_anom_intervals,
             predictions=model_preds,
             detector_boundries=detector_boundries,
-            is_ae=issubclass(type(self.time_series_model), Autoencoder),
+            is_ae=issubclass(type(self.time_series_model), Reconstructor),
             title=title, file_path=file_path
         )
 
@@ -353,8 +353,8 @@ class AnomalyDetector:
         embs: np.ndarray,
         classes: List[int] = None
     ):
-        # if not issubclass(type(self.time_series_model), Autoencoder):
-        #     print("Cannot plot embeddings for model other than Autoencoder.")
+        # if not issubclass(type(self.time_series_model), Reconstructor):
+        #     print("Cannot plot embeddings for model other than Reconstructor.")
         pca = PCA(n_components=3)
         embs_3d = pca.fit_transform(embs)
         plot_3d_embeddings(embs_3d, classes)

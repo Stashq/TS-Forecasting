@@ -12,6 +12,7 @@ it target value named "label". Compatibile with :py:mod:`dataset`.
 # flake8:noqa
 from .base import ModelWrapper
 from .predictor import Predictor
+from .reconstructor import Reconstructor
 from .autoencoder import Autoencoder
 from .vae import VAE
 from .pae import PAE

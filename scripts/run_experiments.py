@@ -78,12 +78,12 @@ models_params = [
 ]
 
 chp_p = CheckpointParams(
-    dirpath="./checkpoints", monitor='val_loss', verbose=True,
+    dirpath="./checkpoints", monitor='val_min_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=1, gpus=1, auto_lr_find=True)
+    max_epochs=2, gpus=1, auto_lr_find=True)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=2, verbose=True)
+    monitor='val_min_loss', patience=2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -95,9 +95,9 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp.run_experiments(experiments_path="./saved_experiments", safe=False)
-# exp = load_experimentator(
-#     "./saved_experiments/2021-12-29_01:31:42.pkl"
-# )
+# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+exp = load_experimentator(
+    "./saved_experiments/2022-05-12_15:46:15.pkl"
+)
 
 plot_exp_predictions(exp, dataset_idx=0, models_ids=[0])
