@@ -7,21 +7,21 @@ from predpy.dataset import MultiTimeSeriesDataloader
 import torch
 from tqdm.auto import tqdm
 
-from .AnomTrans import AnomalyTransformer
 from predpy.wrapper import Reconstructor
+from .velc import VELC
 
 
-class ATWrapper(Reconstructor):
+class VELCWrapper(Reconstructor):
     def __init__(
         self,
-        model: AnomalyTransformer = nn.Module(),
+        model: VELC = nn.Module(),
         lr: float = 1e-4,
         criterion: nn.Module = nn.MSELoss(),
         OptimizerClass: optim.Optimizer = optim.Adam,
         target_cols_ids: List[int] = None,
         optimizer_kwargs: Dict = {}
     ):
-        super().__init__()
+        super(VELCWrapper, self).__init__()
         self.model = model
         self.criterion = criterion
         self.OptimizerClass = OptimizerClass
@@ -30,15 +30,27 @@ class ATWrapper(Reconstructor):
         self.params_to_train = None
         self.target_cols_ids = target_cols_ids
 
-    @property
-    def automatic_optimization(self) -> bool:
-        return False
-
     def forward(self, x):
         return self.model(x)
 
-    def get_loss(self, output, labels):
-        return self.criterion(output, labels)
+    def get_loss(
+        self, x, x_dash, z_dash, z_mu, z_log_sig,
+        re_z_dash, re_z_mu, re_z_log_sig
+    ):
+        loss_x = self.criterion(x, x_dash)
+        loss_kl_z = self.get_kld_loss(z_mu, z_log_sig)
+        loss_kl_re_z = self.get_kld_loss(re_z_mu, re_z_log_sig)
+        loss_z = self.criterion(z_dash, re_z_dash)
+
+        loss = loss_x + loss_kl_z + loss_kl_re_z + loss_z
+        return loss
+
+    def get_kld_loss(self, mu, log_sig):
+        loss = torch.mean(
+            -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
+            dim=0
+        )
+        return loss
 
     def get_Xy(self, batch):
         if self.target_cols_ids is None:
@@ -51,60 +63,26 @@ class ATWrapper(Reconstructor):
             y = X
         return X, y
 
-    def loss_function(self, x_hat, P_list, S_list, lambda_, x):
-        frob_norm = torch.linalg.matrix_norm(x_hat - x, ord="fro")
-        return frob_norm - (
-            lambda_
-            * torch.linalg.norm(
-                self.model.association_discrepancy(P_list, S_list, x),
-                ord=1)
-        )
-
-    def min_loss(self, x, x_hat, P_layers, S_layers):
-        P_list = P_layers
-        S_list = [S.detach() for S in S_layers]
-        lambda_ = -self.model.lambda_
-        return self.loss_function(x_hat, P_list, S_list, lambda_, x).mean()
-
-    def max_loss(self, x, x_hat, P_layers, S_layers):
-        P_list = [P.detach() for P in P_layers]
-        S_list = S_layers
-        lambda_ = self.model.lambda_
-        return self.loss_function(x_hat, P_list, S_list, lambda_, x).mean()
-
     def step(self, batch):
         x, _ = self.get_Xy(batch)
-        x_hat, P, S = self.model(x)
-        min_loss = self.min_loss(x, x_hat, P, S)
-        max_loss = self.max_loss(x, x_hat, P, S)
-        return min_loss, max_loss
+        res = self.model(x)
+        loss = self.get_loss(x, *res)
+        return loss
 
     def training_step(self, batch, batch_idx):
-        opt = self.configure_optimizers()
-        opt.zero_grad()
-        min_loss, max_loss = self.step(batch)
-        self.manual_backward(
-            min_loss,
-            retain_graph=True
-        )
-        self.manual_backward(
-            max_loss
-        )
-        self.log("train_min_loss", min_loss, prog_bar=True, logger=True)
-        self.log("train_max_loss", max_loss, prog_bar=True, logger=True)
-        opt.step()
+        loss = self.step(batch)
+        self.log("train_loss", loss, prog_bar=True, logger=True)
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        min_loss, max_loss = self.step(batch)
-        self.log("val_min_loss", min_loss, prog_bar=True, logger=True)
-        self.log("val_max_loss", max_loss, prog_bar=True, logger=True)
-        return min_loss + max_loss
+        loss = self.step(batch)
+        self.log("val_loss", loss, prog_bar=True, logger=True)
+        return loss
 
     def test_step(self, batch, batch_idx):
-        min_loss, max_loss = self.step(batch)
-        self.log("test_min_loss", min_loss, prog_bar=True, logger=True)
-        self.log("test_max_loss", max_loss, prog_bar=True, logger=True)
-        return min_loss + max_loss
+        loss = self.step(batch)
+        self.log("test_loss", loss, prog_bar=True, logger=True)
+        return loss
 
     def configure_optimizers(self):
         if self.params_to_train is None:
@@ -117,8 +95,8 @@ class ATWrapper(Reconstructor):
 
     def predict(self, sequence):
         with torch.no_grad():
-            x, _, _ = self(sequence)
-            return x
+            x_dash, _, _, _, _, _, _ = self(sequence)
+            return x_dash
 
     def preds_to_df(
         self,

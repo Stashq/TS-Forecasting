@@ -1,2 +1,3 @@
 # flake8: noqa
-from .lstm_ae import LSTMAE, LSTMVAE, LSTMPAE, LSTMPVAE
+from .lstm_ae import (
+    Encoder, Decoder, LSTMAE, LSTMVAE, LSTMPAE, LSTMPVAE)

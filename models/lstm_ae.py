@@ -49,13 +49,17 @@ class Decoder(nn.Module):
         )
         self.dense = nn.Linear(h_size, output_size)
 
-    def forward(self, z):
+    def forward(self, z, seq_len: int):
+        # emb, (_, _) = self.lstm(z)
+        # batch_size, seq_len, _ = emb.shape
+        # # imitate time-distributed dense layer
+        # emb = emb.reshape(batch_size*seq_len, self.h_size)
+        # x_tilda = self.dense(emb)
+        # x_tilda = x_tilda.reshape(batch_size, seq_len, self.output_size)
+        # return x_tilda
+        z = z.repeat(1, seq_len, 1)
         emb, (_, _) = self.lstm(z)
-        batch_size, seq_len, _ = emb.shape
-        # imitate time-distributed dense layer
-        emb = emb.reshape(batch_size*seq_len, self.h_size)
         x_tilda = self.dense(emb)
-        x_tilda = x_tilda.reshape(batch_size, seq_len, self.output_size)
         return x_tilda
 
 

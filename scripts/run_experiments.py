@@ -23,6 +23,7 @@ from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
 from models import LSTMAE, LSTMVAE
 from literature.AnomTrans import AnomalyTransformer, ATWrapper
+from literature.velc import VELC, VELCWrapper
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -65,25 +66,21 @@ c_in = 38
 c_out = 38
 
 models_params = [
-    # ModelParams(
-    #     name_="LSTMVAE_h200_l1", cls_=LSTMVAE,
-    #     init_params=dict(
-    #         c_in=c_in, h_size=200, n_layers=1),
-    #     WrapperCls=VAE, wrapper_kwargs=dict(kld_weight=0.005)),
     ModelParams(
-        name_="AnomTrans", cls_=AnomalyTransformer,
+        name_="VELC", cls_=VELC,
         init_params=dict(
-            N=window_size, d_model=c_in, layers=2, lambda_=0.5),
-        WrapperCls=ATWrapper),
+            c_in=c_in, h_size=200,  n_layers=2,
+            z_size=100, N_constraint=10, threshold=0.5),
+        WrapperCls=VELCWrapper),
 ]
 
 chp_p = CheckpointParams(
-    dirpath="./checkpoints", monitor='val_min_loss', verbose=True,
+    dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
     max_epochs=2, gpus=1, auto_lr_find=True)
 es_p = EarlyStoppingParams(
-    monitor='val_min_loss', patience=2, verbose=True)
+    monitor='val_loss', patience=2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -95,9 +92,9 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
-exp = load_experimentator(
-    "./saved_experiments/2022-05-12_15:46:15.pkl"
-)
+exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+# exp = load_experimentator(
+#     "./saved_experiments/2022-05-12_15:46:15.pkl"
+# )
 
 plot_exp_predictions(exp, dataset_idx=0, models_ids=[0])
