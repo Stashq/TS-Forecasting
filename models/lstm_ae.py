@@ -74,8 +74,11 @@ class LSTMAE(nn.Module):
         self.c_in = c_in
         self.n_layers = n_layers
         self.h_size = h_size
-        self.encoder = Encoder(c_in, h_size, n_layers)
-        self.decoder = Decoder(h_size, c_in, n_layers)
+        self.encoder = Encoder(
+            input_size=c_in, h_size=h_size, n_layers=n_layers)
+        self.decoder = Decoder(
+            z_size=h_size, h_size=h_size,
+            output_size=c_in, n_layers=n_layers)
 
     def forward(self, x):
         emb = self.encoder(x)

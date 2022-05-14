@@ -1,6 +1,3 @@
-import sys
-sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
-
 import torch
 from torch import nn, optim
 from typing import Dict, List, Union, Tuple
@@ -9,25 +6,29 @@ from tqdm.auto import tqdm
 import pandas as pd
 import numpy as np
 
+from .dagmm import DAGMM
 from predpy.dataset import MultiTimeSeriesDataloader
-
 from predpy.wrapper import ModelWrapper
 
 
-class DagmmWrapper(ModelWrapper):
+class DAGMMWrapper(ModelWrapper):
     def __init__(
         self,
-        model: nn.Module = nn.Module(),
+        model: DAGMM = nn.Module(),
         lr: float = 1e-4,
         criterion: nn.Module = nn.MSELoss(),
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
-        target_cols_ids: List[int] = None
+        target_cols_ids: List[int] = None,
+        lambda_energy: float = 0.1,
+        lambda_cov_diag: float = 0.005
     ):
         super().__init__(
             model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs)
         self.target_cols_ids = target_cols_ids
+        self.lambda_energy = lambda_energy
+        self.lambda_cov_diag = lambda_cov_diag
 
     def get_Xy(self, batch):
         if self.target_cols_ids is None:
@@ -40,10 +41,15 @@ class DagmmWrapper(ModelWrapper):
             y = X
         return X, y
 
-    def step(self, batch):
-        sequences, labels = self.get_Xy(batch)
+    def forward(self, x):
+        return self.model(x)
 
-        loss = self.get_loss(self(sequences), labels)
+    def step(self, batch):
+        x, _ = self.get_Xy(batch)
+
+        x_hat, z_c, z, gamma = self(x)
+        loss = self.get_loss(
+            x, x_hat, z, gamma)
         return loss
 
     def get_dataset_predictions(
@@ -116,3 +122,18 @@ class DagmmWrapper(ModelWrapper):
             df[col + "_q100"] = grouped.quantile(1.0)
 
         return df
+
+    def get_loss(
+        self, x, x_hat, z, gamma
+    ):
+        recon_error = torch.mean((x.view(*x_hat.shape) - x_hat) ** 2)
+        phi, mu, cov = self.model.compute_gmm_params(z, gamma)
+        sample_energy, cov_diag = self.model.compute_energy(z, phi, mu, cov)
+        loss = recon_error + self.lambda_energy * sample_energy\
+            + self.lambda_cov_diag * cov_diag
+        return loss, sample_energy, recon_error, cov_diag
+
+    def predict(self, sequence):
+        with torch.no_grad():
+            x_hat, z_c, z, gamma = self(sequence)
+            return x_hat

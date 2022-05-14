@@ -7,7 +7,7 @@ from predpy.dataset import MultiTimeSeriesDataloader
 import torch
 from tqdm.auto import tqdm
 
-from .AnomTrans import AnomalyTransformer
+from .anom_trans import AnomalyTransformer
 from predpy.wrapper import Reconstructor
 
 
