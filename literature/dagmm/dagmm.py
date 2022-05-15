@@ -8,46 +8,67 @@ import torch.nn.functional as F
 from models import LSTMAE
 
 
+class EstimationNet(nn.Module):
+    def __init__(
+        self, z_size: int, h_size: int, dropout_p: float, n_gmm: int
+    ):
+        super(EstimationNet, self).__init__()
+        self.model = nn.Sequential(*[
+            nn.Linear(z_size, h_size),
+            nn.Tanh(),
+            nn.Dropout(p=dropout_p),
+            nn.Linear(h_size, n_gmm),
+            nn.Softmax(dim=1)
+        ])
+
+    def forward(self, z):
+        gamma = self.model(z)
+        return gamma
+
+
 class DAGMM(nn.Module):
     def __init__(
-        self, c_in: int, z_size: int, n_layers: int,
-        n_gmm: int, estimation_net: nn.Module
+        self, c_in: int, z_c_size: int, n_layers: int,
+        n_gmm: int, est_h_size: int, est_dropout_p: int
     ):
         super(DAGMM, self).__init__()
         self.compression_net = LSTMAE(
-            c_in=c_in, h_size=z_size, n_layers=n_layers)
+            c_in=c_in, h_size=z_c_size, n_layers=n_layers)
 
-        # self.estimation_net = nn.Sequential(*[
-        #     nn.Linear(h_size, 10),
-        #     nn.Tanh(),
-        #     nn.Dropout(p=0.5),
-        #     nn.Linear(10, n_gmm),
-        #     nn.Softmax(dim=1)
-        # ])
-        self.estimation_net = estimation_net
+        self.estimation_net = EstimationNet(
+            z_size=z_c_size + 2, h_size=est_h_size,
+            dropout_p=est_dropout_p, n_gmm=n_gmm
+        )
 
         self.register_buffer(
-            'phi', self.to_var(torch.zeros(n_gmm)))
+            'phi', Variable(torch.zeros(n_gmm)))
         self.register_buffer(
-            'mu', self.to_var(torch.zeros(n_gmm, z_size)))
+            'mu', Variable(torch.zeros(n_gmm, z_c_size)))
         self.register_buffer(
-            'cov', self.to_var(torch.zeros(n_gmm, z_size, z_size)))
+            'cov', Variable(torch.zeros(n_gmm, z_c_size, z_c_size)))
 
-    def relative_euclidean_distance(self, a, b, dim=1):
+    def relative_euclidean_distance(self, a, b, dim=-1):
         return (a - b).norm(2, dim=dim) /\
             torch.clamp(a.norm(2, dim=dim), min=1e-10)
 
     def forward(self, x):
+        batch_size, seq_len, _ = x.shape
         z_c = self.compression_net.encode(x)
-        x_hat = self.compression_net.decode(z_c)
+        x_hat = self.compression_net.decode(z_c, seq_len)
 
         rec_cosine = F.cosine_similarity(
-            x.view(x.shape[0], -1), x_hat.view(x_hat.shape[0], -1), dim=1)
+            x.view(batch_size, -1),
+            x_hat.view(batch_size, -1),
+            dim=-1)
         rec_euclidean = self.relative_euclidean_distance(
-            x.view(x.shape[0], -1), x_hat.view(x_hat.shape[0], -1), dim=1)
+            x.view(batch_size, -1),
+            x_hat.view(batch_size, -1),
+            dim=-1)
         z = torch.cat(
-            [z_c, rec_euclidean.unsqueeze(-1), rec_cosine.unsqueeze(-1)],
-            dim=1)
+            [z_c,
+             rec_euclidean.unsqueeze(-1).unsqueeze(-1),
+             rec_cosine.unsqueeze(-1).unsqueeze(-1)],
+            dim=-1)
 
         gamma = self.estimation_net(z)
         return x_hat, z_c, z, gamma
@@ -142,13 +163,3 @@ class DAGMM(nn.Module):
             sample_energy = torch.mean(sample_energy)
 
         return sample_energy, cov_diag
-
-    def loss_function(
-        self, x, x_hat, z, gamma, lambda_energy, lambda_cov_diag
-    ):
-        recon_error = torch.mean((x.view(*x_hat.shape) - x_hat) ** 2)
-        phi, mu, cov = self.compute_gmm_params(z, gamma)
-        sample_energy, cov_diag = self.compute_energy(z, phi, mu, cov)
-        loss = recon_error + lambda_energy * sample_energy\
-            + lambda_cov_diag * cov_diag
-        return loss, sample_energy, recon_error, cov_diag

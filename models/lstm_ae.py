@@ -25,7 +25,7 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         _, (h_n, _) = self.lstm(x)
-        return h_n[-1]
+        return h_n[-1].unsqueeze(dim=1)
 
 
 class Decoder(nn.Module):
@@ -88,8 +88,8 @@ class LSTMAE(nn.Module):
     def encode(self, x):
         return self.encoder(x)
 
-    def decode(self, emb):
-        x_tilda = self.decoder(emb)
+    def decode(self, emb, seq_len: int):
+        x_tilda = self.decoder(emb, seq_len)
         return x_tilda
 
 
