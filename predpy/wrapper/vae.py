@@ -43,33 +43,26 @@ class VAE(Autoencoder):
             target_cols_ids=target_cols_ids)
         self.kld_weight = kld_weight
 
-    def get_kld_loss(self, mu, log_sig):
-        loss = torch.mean(
-            -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
-            dim=0
-        )
-        return loss
-
     def get_loss(
         self,
-        recons: torch.Tensor,
-        input: torch.Tensor,
+        x_hat: torch.Tensor,
+        x: torch.Tensor,
         z_mu: torch.Tensor,
         z_log_sig: torch.Tensor
     ) -> dict:
-        recons_loss = self.criterion(recons, input)
+        recons_loss = self.criterion(x_hat, x)
         kld_loss = self.get_kld_loss(z_mu, z_log_sig)
         loss = recons_loss + self.kld_weight * kld_loss
         return loss
 
     def step(self, batch):
-        sequences, _ = self.get_Xy(batch)
+        x, _ = self.get_Xy(batch)
 
-        x_tilda, z_mu, z_log_sig = self(sequences)
-        loss = self.get_loss(x_tilda, sequences, z_mu, z_log_sig)
+        x_hat, z_mu, z_log_sig = self(x)
+        loss = self.get_loss(x_hat, x, z_mu, z_log_sig)
         return loss
 
-    def predict(self, sequence):
+    def predict(self, x):
         with torch.no_grad():
-            result, _, _ = self(sequence)
-            return result
+            x_hat, _, _ = self(x)
+            return x_hat

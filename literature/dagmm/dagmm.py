@@ -66,15 +66,15 @@ class DAGMM(nn.Module):
             dim=-1)
         z = torch.cat(
             [z_c,
-             rec_euclidean.unsqueeze(-1).unsqueeze(-1),
-             rec_cosine.unsqueeze(-1).unsqueeze(-1)],
+             rec_euclidean.unsqueeze(-1),
+             rec_cosine.unsqueeze(-1)],
             dim=-1)
 
         gamma = self.estimation_net(z)
         return x_hat, z_c, z, gamma
 
     def compute_gmm_params(self, z, gamma):
-        N = gamma.size(0)  # a nie 1???
+        N = gamma.size(0)
         # K
         sum_gamma = torch.sum(gamma, dim=0)
 
@@ -85,15 +85,15 @@ class DAGMM(nn.Module):
 
         # K x D
         mu = torch.sum(
-            gamma.unsqueeze(-1) * z.unsqueeze(1), dim=0) /\
-            sum_gamma.unsqueeze(-1)
+            gamma.unsqueeze(2) * z.unsqueeze(1), dim=0) /\
+            sum_gamma.unsqueeze(1)
         self.mu = mu.data
         # z = N x D
         # mu = K x D
         # gamma N x K
 
         # z_mu = N x K x D
-        z_mu = (z.unsqueeze(1) - mu.unsqueeze(0))
+        z_mu = z.unsqueeze(1) - mu.unsqueeze(0)
 
         # z_mu_outer = N x K x D x D
         z_mu_outer = z_mu.unsqueeze(-1) * z_mu.unsqueeze(-2)
@@ -117,7 +117,10 @@ class DAGMM(nn.Module):
 
         k, d, _ = cov.size()
 
-        z_mu = (z.unsqueeze(1) - mu.unsqueeze(0))
+        z_mu = (z.unsqueeze(1) - mu.unsqueeze(0)).cpu()
+        phi = phi.cpu()
+        mu = mu.cpu()
+        cov = cov.cpu()
 
         cov_inverse = []
         det_cov = []
@@ -125,8 +128,8 @@ class DAGMM(nn.Module):
         eps = 1e-12
         for i in range(k):
             # K x D x D
-            cov_k = cov[i] + self.to_var(torch.eye(d) * eps)
-            pinv = np.linalg.pinv(cov_k.data.numpy())
+            cov_k = cov[i] + Variable(torch.eye(d) * eps)
+            pinv = np.linalg.pinv(cov_k.data.cpu().numpy())
             cov_inverse.append(Variable(torch.from_numpy(pinv)).unsqueeze(0))
 
             eigvals = np.linalg.eigvals(cov_k.data.cpu().numpy() * (2 * np.pi))
@@ -155,8 +158,8 @@ class DAGMM(nn.Module):
         exp_term = torch.exp(exp_term_tmp - max_val)
 
         sample_energy = -max_val.squeeze() - torch.log(
-            torch.sum(self.to_var(phi.unsqueeze(0)) * exp_term / (
-                torch.sqrt(self.to_var(det_cov)) + eps).unsqueeze(0),
+            torch.sum(Variable(phi.unsqueeze(0)) * exp_term / (
+                torch.sqrt(Variable(det_cov)) + eps).unsqueeze(0),
                 dim=1) + eps)
 
         if size_average:

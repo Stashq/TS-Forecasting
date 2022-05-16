@@ -25,7 +25,7 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         _, (h_n, _) = self.lstm(x)
-        return h_n[-1].unsqueeze(dim=1)
+        return h_n[-1]
 
 
 class Decoder(nn.Module):
@@ -57,6 +57,7 @@ class Decoder(nn.Module):
         # x_tilda = self.dense(emb)
         # x_tilda = x_tilda.reshape(batch_size, seq_len, self.output_size)
         # return x_tilda
+        z = z.unsqueeze(1)
         z = z.repeat(1, seq_len, 1)
         emb, (_, _) = self.lstm(z)
         x_tilda = self.dense(emb)

@@ -4,13 +4,13 @@ import torch
 from torch.nn.parameter import Parameter
 
 from predpy.wrapper import Reconstructor
-from .velc import VELC
+from .tadgan import TADGAN
 
 
-class VELCWrapper(Reconstructor):
+class TADGANWrapper(Reconstructor):
     def __init__(
         self,
-        model: VELC = nn.Module(),
+        model: TADGAN = nn.Module(),
         lr: float = 1e-4,
         criterion: nn.Module = nn.MSELoss(),
         OptimizerClass: optim.Optimizer = optim.Adam,
@@ -18,7 +18,7 @@ class VELCWrapper(Reconstructor):
         target_cols_ids: List[int] = None,
         params_to_train: Generator[Parameter] = None
     ):
-        super(VELCWrapper, self).__init__(
+        super(TADGANWrapper, self).__init__(
             model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
             optimizer_kwargs=optimizer_kwargs,
@@ -27,22 +27,16 @@ class VELCWrapper(Reconstructor):
         )
 
     def get_loss(
-        self, x, x_dash, z_dash, z_mu, z_log_sig,
-        re_z_dash, re_z_mu, re_z_log_sig
+        self, x
     ):
-        loss_x = self.criterion(x, x_dash)
-        loss_kl_z = self.get_kld_loss(z_mu, z_log_sig)
-        loss_kl_re_z = self.get_kld_loss(re_z_mu, re_z_log_sig)
-        loss_z = self.criterion(z_dash, re_z_dash)
-
-        loss = loss_x + loss_kl_z + loss_kl_re_z + loss_z
-        return loss
+        pass
 
     def step(self, batch):
-        x, _ = self.get_Xy(batch)
-        res = self.model(x)
-        loss = self.get_loss(x, *res)
-        return loss
+        # x, _ = self.get_Xy(batch)
+        # res = self.model(x)
+        # loss = self.get_loss(x, *res)
+        # return loss
+        pass
 
     def predict(self, x):
         with torch.no_grad():

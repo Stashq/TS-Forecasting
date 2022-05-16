@@ -74,7 +74,7 @@ models_params = [
             c_in=c_in, z_c_size=100,  n_layers=2,
             n_gmm=10, est_h_size=100, est_dropout_p=0.5),
         WrapperCls=DAGMMWrapper, wrapper_kwargs=dict(
-            lambda_energy=0.1, lambda_cov_diag=0.005
+            lambda_energy=0.1, lambda_cov_diag=5e-10
         )),
 ]
 

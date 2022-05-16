@@ -1,29 +1,27 @@
-"""Predictor - LightningModule wrapper for a model.
-
-To work properly, dataset module __getitem__ method should return
-dictionary with model input sequence named "sequence" and following after
-it target value named "label". Compatibile with :py:mod:`dataset`.
+"""ModelWrapper, Predictor and Reconstructor.
 """
 import numpy as np
 import pandas as pd
 from pytorch_lightning import LightningModule
 from torch import nn, optim
-from typing import Dict
+from typing import Dict, Generator, List, Tuple, Union
 from abc import ABC, abstractmethod
 from sklearn.base import TransformerMixin
 from predpy.dataset import MultiTimeSeriesDataloader
 import torch
+from torch.nn.parameter import Parameter
+from tqdm.auto import tqdm
 
 
 class ModelWrapper(LightningModule, ABC):
-    """Lightning module with functionalities for time series prediction
-    models.\n
+    """Lightning module with functionalities for time series
+    prediction / reconstruction models.\n
 
     To work properly, dataset module __getitem__ method should return
     dictionary with model input sequence named "sequence" and following after
     it target value named "label". It also has to have method called
     *get_labels* which return labels from selected range. Class is compatibile
-    with dataset classes from :py:mod:`dataset`.
+    with dataset classes from :py:mod:`predpy.dataset`.
 
     Parameters
     ----------
@@ -36,7 +34,9 @@ class ModelWrapper(LightningModule, ABC):
         lr: float = 1e-4,
         criterion: nn.Module = nn.MSELoss(),
         OptimizerClass: optim.Optimizer = optim.Adam,
-        optimizer_kwargs: Dict = {}
+        optimizer_kwargs: Dict = {},
+        target_cols_ids: List[int] = None,
+        params_to_train: Generator[Parameter] = None
     ):
         super().__init__()
         self.model = model
@@ -44,16 +44,14 @@ class ModelWrapper(LightningModule, ABC):
         self.OptimizerClass = OptimizerClass
         self.optimizer_kwargs = optimizer_kwargs
         self.lr = lr
-        self.params_to_train = None
+        self.target_cols_ids = target_cols_ids
+        self.params_to_train = params_to_train
 
     def forward(self, x):
         return self.model(x)
 
-    def get_loss(self, output, labels):
-        return self.criterion(output, labels)
-
     @abstractmethod
-    def get_Xy(self, batch):
+    def get_loss(self, output, labels):
         pass
 
     @abstractmethod
@@ -84,9 +82,13 @@ class ModelWrapper(LightningModule, ABC):
                 self.params_to_train, self.lr, **self.optimizer_kwargs)
         return opt
 
-    def predict(self, sequence):
-        with torch.no_grad():
-            return self(sequence)
+    @abstractmethod
+    def predict(self, x):
+        pass
+
+    @abstractmethod
+    def get_Xy(self, batch):
+        pass
 
     @abstractmethod
     def get_dataset_predictions(
@@ -103,3 +105,174 @@ class ModelWrapper(LightningModule, ABC):
         preds: np.ndarray
     ) -> pd.DataFrame:
         pass
+
+
+class Predictor(ModelWrapper):
+    """Lightning module with functionalities for time series prediction
+    models.\n
+
+    To work properly, dataset module __getitem__ method should return
+    dictionary with model input sequence named "sequence" and following after
+    it target value named "label". It also has to have method called
+    *get_labels* which return labels from selected range. Class is compatibile
+    with dataset classes from :py:mod:`dataset`.
+
+    Parameters
+    ----------
+    LightningModule : [type]
+        Lightning module class.
+    """
+    def __init__(
+        self,
+        model: nn.Module = nn.Module(),
+        lr: float = 1e-4,
+        criterion: nn.Module = nn.MSELoss(),
+        OptimizerClass: optim.Optimizer = optim.Adam,
+        optimizer_kwargs: Dict = {}
+    ):
+        super().__init__(
+            model=model, lr=lr, criterion=criterion,
+            OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs)
+
+    def get_Xy(self, batch):
+        X = batch["sequence"]
+        y = batch["label"]
+        return X, y
+
+    def step(self, batch):
+        sequences, labels = self.get_Xy(batch)
+
+        loss = self.get_loss(self(sequences), labels)
+        return loss
+
+    def get_dataset_predictions(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        scaler: TransformerMixin = None
+    ) -> pd.DataFrame:
+        self.eval()
+        preds = []
+
+        for batch in tqdm(dataloader, desc="Making predictions"):
+            x = self.get_Xy(batch)[0]
+            preds += [self.predict(x)]
+
+        preds = torch.cat(preds)
+        preds = preds.numpy()
+
+        if scaler is not None:
+            preds =\
+                scaler.inverse_transform([preds]).tolist()
+
+        return self.preds_to_df(dataloader, preds)
+
+    def preds_to_df(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        preds: np.ndarray
+    ) -> pd.DataFrame:
+        indices = dataloader.dataset.get_indices_like_recs(labels=True)
+        columns = dataloader.dataset.target
+        df = pd.DataFrame(preds, columns=columns, index=indices)
+
+        return df
+
+
+class Reconstructor(ModelWrapper):
+    def __init__(
+        self,
+        model: nn.Module = nn.Module(),
+        lr: float = 1e-4,
+        criterion: nn.Module = nn.MSELoss(),
+        OptimizerClass: optim.Optimizer = optim.Adam,
+        optimizer_kwargs: Dict = {},
+        target_cols_ids: List[int] = None,
+        params_to_train: Generator[Parameter] = None
+    ):
+        super().__init__(
+            model=model, lr=lr, criterion=criterion,
+            OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs,
+            target_cols_ids=target_cols_ids, params_to_train=params_to_train)
+        self.target_cols_ids = target_cols_ids
+        self.params_to_train = params_to_train
+
+    def get_Xy(self, batch):
+        if self.target_cols_ids is None:
+            X = batch["sequence"]
+            y = X
+        else:
+            X = torch.index_select(
+                batch["sequence"], dim=-1,
+                index=torch.tensor(self.target_cols_ids, device=self.device))
+            y = X
+        return X, y
+
+    def get_dataset_predictions(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        scaler: TransformerMixin = None
+    ) -> pd.DataFrame:
+        self.eval()
+        preds = []
+
+        for batch in tqdm(dataloader, desc="Making predictions"):
+            x = self.get_Xy(batch)[0]
+            preds += [self.predict(x)]
+
+        preds = torch.cat(preds)
+        preds = preds.numpy()
+
+        if scaler is not None:
+            preds =\
+                scaler.inverse_transform([preds]).tolist()
+
+        return self.preds_to_df(dataloader, preds, return_quantiles=True)
+
+    def preds_to_df(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        preds: np.ndarray,
+        return_quantiles: bool = True,
+        return_raw_preds: bool = False
+    ) -> Union[pd.DataFrame, Tuple[pd.DataFrame]]:
+        if len(preds.shape) == 3:
+            batch_size, seq_len = preds.shape[0], preds.shape[1]
+            preds = preds.reshape(batch_size * seq_len, -1)
+        ids = dataloader.dataset.get_indices_like_recs(labels=False)
+        ids = pd.concat(ids)
+        columns = dataloader.dataset.target
+        preds_df = pd.DataFrame(preds, columns=columns, index=ids)
+
+        if return_quantiles and return_raw_preds:
+            return [
+                self._preds_df_to_quantiles_df(preds_df, columns), preds_df]
+        if return_quantiles:
+            return self._preds_df_to_quantiles_df(preds_df, columns)
+        elif return_raw_preds:
+            return preds_df
+        else:
+            return None
+
+    def _preds_df_to_quantiles_df(
+        self,
+        preds_df: pd.Series,
+        columns: List[str]
+    ) -> pd.DataFrame:
+        data = {}
+        for col in columns:
+            grouped = preds_df[col].groupby(preds_df.index)
+            data[str(col) + "_q000"] = grouped.quantile(0.0)
+            data[str(col) + "_q025"] = grouped.quantile(0.25)
+            data[str(col) + "_q050"] = grouped.quantile(0.5)
+            data[str(col) + "_q075"] = grouped.quantile(0.75)
+            data[str(col) + "_q100"] = grouped.quantile(1.0)
+
+        df = pd.DataFrame(data, index=preds_df.index.unique())
+        return df
+
+    def get_kld_loss(self, mu, log_sig):
+        loss = torch.mean(
+            -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
+            dim=0
+        )
+        return loss
