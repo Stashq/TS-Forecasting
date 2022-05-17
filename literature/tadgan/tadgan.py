@@ -1,54 +1,28 @@
 import torch.nn as nn
+import torch.nn.functional as F
 
-
-class Encoder(nn.Module):
-    def __init__(self, signal_shape=100):
-        super(Encoder, self).__init__()
-        self.signal_shape = signal_shape
-        self.lstm = nn.LSTM(
-            input_size=self.signal_shape, hidden_size=20,
-            num_layers=1, bidirectional=True)
-        self.dense = nn.Linear(in_features=40, out_features=20)
-
-    def forward(self, x):
-        x = x.view(1, 64, self.signal_shape).float()
-        x, (hn, cn) = self.lstm(x)
-        x = self.dense(x)
-        return (x)
-
-
-class Decoder(nn.Module):
-    def __init__(self, signal_shape=100):
-        super(Decoder, self).__init__()
-        self.signal_shape = signal_shape
-        self.lstm = nn.LSTM(
-            input_size=20, hidden_size=64, num_layers=2, bidirectional=True)
-        self.dense = nn.Linear(in_features=128, out_features=self.signal_shape)
-
-    def forward(self, x):
-        x, (hn, cn) = self.lstm(x)
-        x = self.dense(x)
-        return (x)
+from models import Encoder, Decoder
 
 
 class CriticX(nn.Module):
-    def __init__(self, signal_shape=100):
+    def __init__(
+        self, x_size: int, h_size: int
+    ):
         super(CriticX, self).__init__()
-        self.signal_shape = signal_shape
-        self.dense1 = nn.Linear(in_features=self.signal_shape, out_features=20)
-        self.dense2 = nn.Linear(in_features=20, out_features=1)
+        self.dense1 = nn.Linear(in_features=x_size, out_features=h_size)
+        self.dense2 = nn.Linear(in_features=h_size, out_features=1)
 
     def forward(self, x):
-        x = x.view(1, 64, self.signal_shape).float()
         x = self.dense1(x)
+        x = F.relu(x)
         x = self.dense2(x)
         return (x)
 
 
 class CriticZ(nn.Module):
-    def __init__(self):
+    def __init__(self, z_size: int):
         super(CriticZ, self).__init__()
-        self.dense1 = nn.Linear(in_features=20, out_features=1)
+        self.dense1 = nn.Linear(in_features=z_size, out_features=1)
 
     def forward(self, x):
         x = self.dense1(x)
@@ -56,12 +30,17 @@ class CriticZ(nn.Module):
 
 
 class TADGAN(nn.Module):
-    def __init__(self):
+    def __init__(
+        self, c_in: int, h_size: int,  n_layers: int, z_size: int
+    ):
+        self.z_size = z_size
         super(TADGAN, self).__init__()
-        self.encoder = Encoder()
-        self.decoder = Decoder()
-        self.critic_x = CriticX()
-        self.critic_z = CriticZ()
+        self.encoder = Encoder(
+            x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
+        self.decoder = Decoder(
+            z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
+        self.critic_x = CriticX(x_size=c_in, h_size=20)
+        self.critic_z = CriticZ(z_size=z_size)
 
     def forward(self, x):
         z = self.encoder(x)

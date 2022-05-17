@@ -16,7 +16,7 @@ class DAGMMWrapper(ModelWrapper):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter] = None,
+        params_to_train: Generator[Parameter, None, None] = None,
         lambda_energy: float = 0.1,
         lambda_cov_diag: float = 0.005
     ):

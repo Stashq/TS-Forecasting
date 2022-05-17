@@ -16,7 +16,7 @@ class VELCWrapper(Reconstructor):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter] = None
+        params_to_train: Generator[Parameter, None, None] = None
     ):
         super(VELCWrapper, self).__init__(
             model=model, lr=lr, criterion=criterion,

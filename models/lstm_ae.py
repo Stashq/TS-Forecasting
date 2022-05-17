@@ -1,31 +1,34 @@
 from torch import nn
 import torch
-# import torch.nn.functional as F
-
-# from ..predpy.wrapper.autoencoder import Autoencoder
+import torch.nn.functional as F
 
 
 class Encoder(nn.Module):
     def __init__(
         self,
-        input_size: int,
+        x_size: int,
         h_size: int,
         n_layers: int,
+        emb_size: int = None
     ):
         super().__init__()
-        self.input_size = input_size
-        self.n_layers = n_layers
-        self.h_size = h_size
         self.lstm = nn.LSTM(
-            input_size=input_size,
+            input_size=x_size,
             hidden_size=h_size,
             num_layers=n_layers,
             batch_first=True
         )
+        self.linear = nn.Linear(
+            in_features=h_size,
+            out_features=emb_size
+        )
 
     def forward(self, x):
         _, (h_n, _) = self.lstm(x)
-        return h_n[-1]
+        emb = F.relu(h_n[-1])
+        emb = self.linear(emb)
+        emb = F.relu(emb)
+        return emb
 
 
 class Decoder(nn.Module):
@@ -33,34 +36,27 @@ class Decoder(nn.Module):
         self,
         z_size: int,
         h_size: int,
-        output_size: int,
-        n_layers: int
+        n_layers: int,
+        x_size: int
     ):
         super().__init__()
-        self.z_size = z_size
-        self.h_size = h_size
-        self.output_size = output_size
-        self.n_layers = n_layers
         self.lstm = nn.LSTM(
             input_size=z_size,
             hidden_size=h_size,
             num_layers=n_layers,
             batch_first=True
         )
-        self.dense = nn.Linear(h_size, output_size)
+        self.linear = nn.Linear(
+            in_features=h_size,
+            out_features=x_size
+        )
 
     def forward(self, z, seq_len: int):
-        # emb, (_, _) = self.lstm(z)
-        # batch_size, seq_len, _ = emb.shape
-        # # imitate time-distributed dense layer
-        # emb = emb.reshape(batch_size*seq_len, self.h_size)
-        # x_tilda = self.dense(emb)
-        # x_tilda = x_tilda.reshape(batch_size, seq_len, self.output_size)
-        # return x_tilda
         z = z.unsqueeze(1)
         z = z.repeat(1, seq_len, 1)
         emb, (_, _) = self.lstm(z)
-        x_tilda = self.dense(emb)
+        emb = F.relu(emb)
+        x_tilda = self.linear(emb)
         return x_tilda
 
 
@@ -69,17 +65,17 @@ class LSTMAE(nn.Module):
         self,
         c_in: int,
         h_size: int,
-        n_layers: int
+        n_layers: int,
+        z_size: int
     ):
         super().__init__()
         self.c_in = c_in
         self.n_layers = n_layers
         self.h_size = h_size
         self.encoder = Encoder(
-            input_size=c_in, h_size=h_size, n_layers=n_layers)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
         self.decoder = Decoder(
-            z_size=h_size, h_size=h_size,
-            output_size=c_in, n_layers=n_layers)
+            z_size=h_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
 
     def forward(self, x):
         emb = self.encoder(x)
@@ -99,15 +95,16 @@ class LSTMVAE(nn.Module):
         self,
         c_in: int,
         h_size: int,
-        n_layers: int
+        n_layers: int,
+        z_size: int
     ):
         super(LSTMVAE, self).__init__()
         self.encoder = Encoder(
-            input_size=c_in, h_size=h_size, n_layers=n_layers)
-        self.z_mu_dense = nn.Linear(h_size, h_size)
-        self.z_log_sig_dense = nn.Linear(h_size, h_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
+        self.z_mu_dense = nn.Linear(z_size, z_size)
+        self.z_log_sig_dense = nn.Linear(z_size, z_size)
         self.decoder = Decoder(
-            z_size=h_size, h_size=h_size, output_size=c_in, n_layers=n_layers)
+            z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
 
     def reparametrization(self, mu, log_sig):
         eps = torch.randn_like(mu)
@@ -140,13 +137,14 @@ class LSTMPAE(nn.Module):
         self,
         c_in: int,
         h_size: int,
-        n_layers: int
+        n_layers: int,
+        z_size: int
     ):
         super(LSTMPAE, self).__init__()
         self.encoder = Encoder(
-            input_size=c_in, h_size=h_size, n_layers=n_layers)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
         self.decoder = Decoder(
-            z_size=h_size, h_size=h_size, output_size=c_in, n_layers=n_layers)
+            z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
         self.x_mu_dense = nn.Linear(c_in, c_in)
         self.x_log_sig_dense = nn.Linear(c_in, c_in)
 
@@ -181,15 +179,16 @@ class LSTMPVAE(nn.Module):
         self,
         c_in: int,
         h_size: int,
-        n_layers: int
+        n_layers: int,
+        z_size: int
     ):
         super(LSTMPVAE, self).__init__()
         self.encoder = Encoder(
-            input_size=c_in, h_size=h_size, n_layers=n_layers)
-        self.decoder = Decoder(
-            z_size=h_size, h_size=h_size, output_size=c_in, n_layers=n_layers)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
         self.z_mu_dense = nn.Linear(h_size, h_size)
         self.z_log_sig_dense = nn.Linear(h_size, h_size)
+        self.decoder = Decoder(
+            z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
         self.x_mu_dense = nn.Linear(c_in, c_in)
         self.x_log_sig_dense = nn.Linear(c_in, c_in)
 

@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 import pandas as pd
 import numpy as np
 
-from .reconstructor import Reconstructor
+from .base import Reconstructor
 from predpy.dataset import MultiTimeSeriesDataloader
 
 

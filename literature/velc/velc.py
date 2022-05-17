@@ -50,9 +50,9 @@ class VELC(nn.Module):
         super(VELC, self).__init__()
 
         self.encoder = Encoder(
-            input_size=c_in, h_size=h_size, n_layers=n_layers)
-        self.z_mu_dense = nn.Linear(h_size, z_size)
-        self.z_log_sig_dense = nn.Linear(h_size, z_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
+        self.z_mu_dense = nn.Linear(z_size, z_size)
+        self.z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_1 = ConstraintNet(
             c_in=c_in, z_size=z_size, N=N_constraint, threshold=threshold)
 
@@ -60,9 +60,9 @@ class VELC(nn.Module):
             z_size=z_size, h_size=h_size, output_size=c_in, n_layers=n_layers)
 
         self.re_encoder = Encoder(
-            input_size=c_in, h_size=h_size, n_layers=n_layers)
-        self.re_z_mu_dense = nn.Linear(h_size, z_size)
-        self.re_z_log_sig_dense = nn.Linear(h_size, z_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
+        self.re_z_mu_dense = nn.Linear(z_size, z_size)
+        self.re_z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_2 = ConstraintNet(
             c_in=c_in, z_size=z_size, N=N_constraint, threshold=threshold)
 

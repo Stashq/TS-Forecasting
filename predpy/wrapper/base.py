@@ -36,7 +36,7 @@ class ModelWrapper(LightningModule, ABC):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter] = None
+        params_to_train: Generator[Parameter, None, None] = None
     ):
         super().__init__()
         self.model = model
@@ -187,7 +187,7 @@ class Reconstructor(ModelWrapper):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter] = None
+        params_to_train: Generator[Parameter, None, None] = None
     ):
         super().__init__(
             model=model, lr=lr, criterion=criterion,
