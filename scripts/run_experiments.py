@@ -73,16 +73,18 @@ models_params = [
         name_="TadGAN", cls_=TADGAN,
         init_params=dict(
             c_in=c_in, h_size=200, n_layers=2, z_size=100),
-        WrapperCls=TADGANWrapper, gen_dis_train_loops=(1, 1)),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(1, 1))
+    ),
 ]
 
 chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=2, gpus=1, auto_lr_find=True)
+    max_epochs=100, gpus=1, auto_lr_find=True)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=2, verbose=True)
+    monitor='val_loss', patience=4, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
