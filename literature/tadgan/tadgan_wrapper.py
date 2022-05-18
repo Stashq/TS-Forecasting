@@ -1,7 +1,7 @@
 from torch import nn, optim
-from typing import Dict, Generator, List
+from typing import Dict, List, Tuple
 import torch
-from torch.nn.parameter import Parameter
+from torch.autograd import Variable
 
 from predpy.wrapper import Reconstructor
 from .tadgan import TADGAN
@@ -16,27 +16,27 @@ class TADGANWrapper(Reconstructor):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter, None, None] = None
+        gen_dis_train_loops: Tuple[int] = (1, 3)
     ):
         super(TADGANWrapper, self).__init__(
             model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
             optimizer_kwargs=optimizer_kwargs,
             target_cols_ids=target_cols_ids,
-            params_to_train=params_to_train
+            params_to_train=None
         )
         self.mse = nn.MSELoss()
+        self.gen_loops, self.dis_loops = gen_dis_train_loops
 
     @property
     def automatic_optimization(self) -> bool:
         return False
 
-    def wasserstein_loss(self, real, fake):
-        """real and fake are predictions"""
-        loss_real = torch.mean(real)
-        loss_fake = torch.mean(fake)
-        loss = loss_real - loss_fake
-        return loss
+    def get_loss(self):
+        pass
+
+    def step(self):
+        pass
 
     def get_mse_loss(self, x, z_enc=None):
         if z_enc is not None:
@@ -47,8 +47,27 @@ class TADGANWrapper(Reconstructor):
         loss_mse = self.mse(x, x_hat)
         return loss_mse
 
-    def get_gp_loss(self, gradient):
-        pass
+    def get_gp_loss(self, x, x_gen):
+        alpha = torch.rand(x.shape)
+        # Random Weighted Average
+        ix = Variable(alpha * x + (1 - alpha) * x_gen)
+        ix.requires_grad_(True)
+        v_ix = self.model.critic_x(ix)
+        # self.manual_backward(
+        #     min_loss,
+        #     retain_graph=True
+        # )
+        v_ix.mean().backward(retain_graph=True)
+        gradients = ix.grad
+        gp_loss = torch.sqrt(torch.sum(torch.square(gradients).view(-1)))
+        return gp_loss
+
+    def wasserstein_loss(self, real, fake):
+        """real and fake are predictions"""
+        loss_real = torch.mean(real)
+        loss_fake = torch.mean(fake)
+        loss = loss_real - loss_fake
+        return loss
 
     def get_ws_loss(
         self, x_real_score, x_fake_score,
@@ -58,37 +77,42 @@ class TADGANWrapper(Reconstructor):
         loss_z = self.wasserstein_loss(z_real_score, z_fake_score)
         return loss_x, loss_z
 
-    def step(self, batch, training: bool = True, mse: bool = False):
-        x, _ = self.get_Xy(batch)
+    def critic_step(
+        self, x, include_mse: bool = False,
+        include_gp: bool = False
+    ):
         batch_size, seq_len = x.shape[:2]
-        res = ()
+        z = torch.empty(batch_size, self.model.z_size)\
+            .uniform_(0, 1).to(self.device)
+        x_gen = self.model.decoder(z, seq_len=seq_len)
+        z_enc = self.model.encoder(x)
 
-        if training:
-            z = torch.empty(batch_size, self.model.z_size).uniform_(0, 1)
-            z = z.to(self.device)
-            x_hat = self.model.decoder(z, seq_len=seq_len)
-            z_enc = self.model.encoder(x)
+        x_real_score = self.model.critic_x(x)
+        x_fake_score = self.model.critic_x(x_gen)
 
-            x_real_score = self.model.critic_x(x)
-            x_fake_score = self.model.critic_x(x_hat)
+        z_real_score = self.model.critic_z(z_enc)
+        z_fake_score = self.model.critic_z(z)
 
-            z_real_score = self.model.critic_z(z_enc)
-            z_fake_score = self.model.critic_z(z)
+        loss_x = self.wasserstein_loss(
+            real=x_real_score, fake=x_fake_score)
+        loss_z = self.wasserstein_loss(
+            real=z_real_score, fake=z_fake_score)
 
-            loss_x = self.wasserstein_loss(
-                real=x_real_score, fake=x_fake_score)
-            loss_z = self.wasserstein_loss(
-                real=z_real_score, fake=z_fake_score)
-            res = (loss_x, loss_z)
-        if mse:
-            if training:
-                x_hat2 = self.model.decoder(z_enc, seq_len=seq_len)
-            else:
-                x_hat2 = self.model(x)
-            loss_mse = self.mse(x, x_hat2)
-            res += (loss_mse,)
+        if include_mse:
+            x_hat = self.model.decoder(z_enc, seq_len=seq_len)
+            loss_mse = self.mse(x, x_hat)
+            loss_x += loss_mse
+            loss_z += loss_mse
+        if include_gp:
+            gp_loss = self.get_gp_loss(x, x_gen)
+            loss_x += gp_loss
+            loss_z += gp_loss
+        return loss_x, loss_z
 
-        return res
+    def mse_step(self, x):
+        x_hat = self.model(x)
+        loss_mse = self.mse(x, x_hat)
+        return loss_mse
 
     def predict(self, x):
         with torch.no_grad():
@@ -96,40 +120,72 @@ class TADGANWrapper(Reconstructor):
             return x_hat
 
     def configure_optimizers(self):
-        opt_g = self.OptimizerClass([
-            {'params': self.model.encoder.parameters()},
-            {'params': self.model.decoder.parameters()}],
+        opt_enc = self.OptimizerClass(
+            self.model.encoder.parameters(),
             lr=self.lr, **self.optimizer_kwargs)
-        opt_d = self.OptimizerClass([
-            {'params': self.model.critic_x.parameters()},
-            {'params': self.model.critic_z.parameters()}],
+        opt_dec = self.OptimizerClass(
+            self.model.decoder.parameters(),
             lr=self.lr, **self.optimizer_kwargs)
-        return [opt_g, opt_d]
+        opt_cr_x = self.OptimizerClass(
+            self.model.critic_x.parameters(),
+            lr=self.lr, **self.optimizer_kwargs)
+        opt_cr_z = self.OptimizerClass(
+            self.model.critic_z.parameters(),
+            lr=self.lr, **self.optimizer_kwargs)
+        return [opt_enc, opt_dec, opt_cr_x, opt_cr_z]
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        # train generators
-        if optimizer_idx == 0:
-            loss_x, loss_z, loss_mse = self.step(batch, mse=True)
-            loss = loss_x + loss_z + loss_mse
-            m_name = "gen"
-        # train discriminators
-        elif optimizer_idx == 1:
-            loss_x, loss_z = self.step(batch)
-            loss_x = loss_x * (-1)
-            loss_z = loss_z * (-1)
-            loss = loss_x + loss_z
-            m_name = "dis"
-        self.log(m_name + "_x_loss", loss_x, prog_bar=True, logger=True)
-        self.log(m_name + "_z_loss", loss_z, prog_bar=True, logger=True)
-        self.log(m_name + "_train_loss", loss, prog_bar=True, logger=True)
-        return loss
+    def training_log(
+        self, losses: Dict[str, float]
+    ):
+        for name, value in losses.items():
+            self.log(name, value, prog_bar=True, logger=True)
+
+    def training_step(self, batch, batch_idx):
+        x, _ = self.get_Xy(batch)
+
+        opt_enc, opt_dec, opt_cr_x, opt_cr_z =\
+            self.configure_optimizers()
+        for _ in range(self.gen_loops):
+            opt_enc.zero_grad()
+            opt_dec.zero_grad()
+
+            loss_x, loss_z = self.critic_step(
+                x, include_mse=True)
+
+            self.training_log({
+                'train_gen_loss_x': loss_x,
+                'train_gen_loss_z': loss_z
+            })
+
+            loss_x.backward()
+            loss_z.backward()
+            opt_enc.step()
+            opt_dec.step()
+        for _ in range(self.dis_loops):
+            opt_cr_x.zero_grad()
+            opt_cr_z.zero_grad()
+
+            loss_x, loss_z = self.critic_step(
+                x, include_gp=True)
+
+            self.training_log({
+                'train_dis_loss_x': loss_x,
+                'train_dis_loss_z': loss_z
+            })
+
+            loss_x.backward()
+            loss_z.backward()
+            opt_cr_x.step()
+            opt_cr_z.step()
 
     def validation_step(self, batch, batch_idx):
-        loss = self.step(batch, training=False, mse=True)[0]
+        x, _ = self.get_Xy(batch)
+        loss = self.get_mse_loss(x)
         self.log("val_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def test_step(self, batch, batch_idx):
-        loss = self.step(batch, training=False, mse=True)[0]
+        x, _ = self.get_Xy(batch)
+        loss = self.get_mse_loss(x)
         self.log("test_loss", loss, prog_bar=True, logger=True)
         return loss
