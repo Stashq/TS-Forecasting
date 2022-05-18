@@ -27,30 +27,46 @@ class TADGANWrapper(Reconstructor):
         )
         self.mse = nn.MSELoss()
 
-    def wasserstein_loss(self, score):
-        return torch.mean(torch.ones(score.shape) * score)
+    @property
+    def automatic_optimization(self) -> bool:
+        return False
 
-    def get_loss(
-        self, x_real_score, x_fake_score, z_real_score, z_fake_score
+    def wasserstein_loss(self, real, fake):
+        """real and fake are predictions"""
+        loss_real = torch.mean(real)
+        loss_fake = torch.mean(fake)
+        loss = loss_real - loss_fake
+        return loss
+
+    def get_mse_loss(self, x, z_enc=None):
+        if z_enc is not None:
+            seq_len = x.size(1)
+            x_hat = self.model.decoder(z_enc, seq_len=seq_len)
+        else:
+            x_hat = self.model(x)
+        loss_mse = self.mse(x, x_hat)
+        return loss_mse
+
+    def get_gp_loss(self, gradient):
+        pass
+
+    def get_ws_loss(
+        self, x_real_score, x_fake_score,
+        z_real_score, z_fake_score
     ):
-        loss_x_real = self.wasserstein_loss(x_real_score)
-        loss_x_fake = self.wasserstein_loss(x_fake_score)
-        loss_x = loss_x_real - loss_x_fake
-
-        loss_z_real = self.wasserstein_loss(z_real_score)
-        loss_z_fake = self.wasserstein_loss(z_fake_score)
-        loss_z = loss_z_real - loss_z_fake
-
+        loss_x = self.wasserstein_loss(x_real_score, x_fake_score)
+        loss_z = self.wasserstein_loss(z_real_score, z_fake_score)
         return loss_x, loss_z
 
     def step(self, batch, training: bool = True, mse: bool = False):
         x, _ = self.get_Xy(batch)
-        batch_size = x.size(0)
+        batch_size, seq_len = x.shape[:2]
         res = ()
 
         if training:
-            z = torch.empty(1, batch_size, self.model.z_size).uniform_(0, 1)
-            x_hat = self.model.decoder(z)
+            z = torch.empty(batch_size, self.model.z_size).uniform_(0, 1)
+            z = z.to(self.device)
+            x_hat = self.model.decoder(z, seq_len=seq_len)
             z_enc = self.model.encoder(x)
 
             x_real_score = self.model.critic_x(x)
@@ -59,13 +75,14 @@ class TADGANWrapper(Reconstructor):
             z_real_score = self.model.critic_z(z_enc)
             z_fake_score = self.model.critic_z(z)
 
-            loss_x, loss_z = self.get_loss(
-                x_real_score=x_real_score, x_fake_score=x_fake_score,
-                z_real_score=z_real_score, z_fake_score=z_fake_score)
+            loss_x = self.wasserstein_loss(
+                real=x_real_score, fake=x_fake_score)
+            loss_z = self.wasserstein_loss(
+                real=z_real_score, fake=z_fake_score)
             res = (loss_x, loss_z)
         if mse:
             if training:
-                x_hat2 = self.model.decoder(z_enc)
+                x_hat2 = self.model.decoder(z_enc, seq_len=seq_len)
             else:
                 x_hat2 = self.model(x)
             loss_mse = self.mse(x, x_hat2)
@@ -80,12 +97,12 @@ class TADGANWrapper(Reconstructor):
 
     def configure_optimizers(self):
         opt_g = self.OptimizerClass([
-            self.model.encoder.parameters(),
-            self.model.decoder.parameters()],
+            {'params': self.model.encoder.parameters()},
+            {'params': self.model.decoder.parameters()}],
             lr=self.lr, **self.optimizer_kwargs)
         opt_d = self.OptimizerClass([
-            self.model.critic_x.parameters(),
-            self.model.critic_z.parameters()],
+            {'params': self.model.critic_x.parameters()},
+            {'params': self.model.critic_z.parameters()}],
             lr=self.lr, **self.optimizer_kwargs)
         return [opt_g, opt_d]
 

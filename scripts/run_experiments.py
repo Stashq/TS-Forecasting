@@ -25,6 +25,7 @@ from models import LSTMAE, LSTMVAE
 from literature.anom_trans import AnomalyTransformer, ATWrapper
 from literature.velc import VELC, VELCWrapper
 from literature.dagmm import DAGMM, DAGMMWrapper
+from literature.tadgan import TADGAN, TADGANWrapper
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -69,13 +70,10 @@ c_out = 38
 
 models_params = [
     ModelParams(
-        name_="DAGMM", cls_=DAGMM,
+        name_="TadGAN", cls_=TADGAN,
         init_params=dict(
-            c_in=c_in, z_c_size=100,  n_layers=2,
-            n_gmm=10, est_h_size=100, est_dropout_p=0.5),
-        WrapperCls=DAGMMWrapper, wrapper_kwargs=dict(
-            lambda_energy=0.1, lambda_cov_diag=5e-10
-        )),
+            c_in=c_in, h_size=200, n_layers=2, z_size=100),
+        WrapperCls=TADGANWrapper),
 ]
 
 chp_p = CheckpointParams(

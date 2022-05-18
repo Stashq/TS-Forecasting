@@ -43,6 +43,7 @@ class TADGAN(nn.Module):
         self.critic_z = CriticZ(z_size=z_size)
 
     def forward(self, x):
+        seq_len = x.size(1)
         z = self.encoder(x)
-        x_hat = self.decoder(z)
+        x_hat = self.decoder(z, seq_len=seq_len)
         return x_hat
