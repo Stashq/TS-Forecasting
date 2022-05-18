@@ -73,7 +73,7 @@ models_params = [
         name_="TadGAN", cls_=TADGAN,
         init_params=dict(
             c_in=c_in, h_size=200, n_layers=2, z_size=100),
-        WrapperCls=TADGANWrapper),
+        WrapperCls=TADGANWrapper, gen_dis_train_loops=(1, 1)),
 ]
 
 chp_p = CheckpointParams(
