@@ -16,7 +16,8 @@ class TADGANWrapper(Reconstructor):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        gen_dis_train_loops: Tuple[int] = (1, 3)
+        gen_dis_train_loops: Tuple[int] = (1, 3),
+        warmup_epochs: int = 0
     ):
         super(TADGANWrapper, self).__init__(
             model=model, lr=lr, criterion=criterion,
@@ -27,6 +28,7 @@ class TADGANWrapper(Reconstructor):
         )
         self.mse = nn.MSELoss()
         self.gen_loops, self.dis_loops = gen_dis_train_loops
+        self.warmup_epochs = warmup_epochs
 
     @property
     def automatic_optimization(self) -> bool:
@@ -157,19 +159,23 @@ class TADGANWrapper(Reconstructor):
         var_name: Literal['x', 'z']
     ):
         opt.zero_grad()
-
-        if var_name == 'x':
-            loss = self.calculate_loss_x(x, model_part=model_part)
-        elif var_name == 'z':
-            loss = self.calculate_loss_z(x, model_part=model_part)
+        if self.current_epoch < self.warmup_epochs:
+            loss = self.mse_step(x)
+            self.training_log({
+                'warmup_mse': loss.float()})
         else:
-            raise ValueError(
-                'Unknown variable name "%s". Allowed: "x" or "z"' % var_name)
+            if var_name == 'x':
+                loss = self.calculate_loss_x(x, model_part=model_part)
+            elif var_name == 'z':
+                loss = self.calculate_loss_z(x, model_part=model_part)
+            else:
+                raise ValueError(
+                    'Unknown variable name "%s". Allowed: "x" or "z"'
+                    % var_name)
+            self.training_log({
+                var_name + '_' + model_part + '_train': loss.float()})
         loss.backward(retain_graph=True)
         opt.step()
-
-        self.training_log({
-            var_name + '_' + model_part + '_train': loss.float()})
 
         return loss
 
@@ -179,8 +185,8 @@ class TADGANWrapper(Reconstructor):
         opt_enc, opt_dec, opt_cr_x, opt_cr_z =\
             self.configure_optimizers()
         for _ in range(self.gen_loops):
-            self.substep(x, opt_enc, 'gen', 'z')
-            self.substep(x, opt_dec, 'gen', 'x')
+            self.substep(x, opt_enc, 'gen', 'x')
+            self.substep(x, opt_dec, 'gen', 'z')
         for _ in range(self.dis_loops):
             self.substep(x, opt_cr_z, 'dis', 'z')
             self.substep(x, opt_cr_x, 'dis', 'x')

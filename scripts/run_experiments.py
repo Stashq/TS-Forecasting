@@ -19,6 +19,7 @@ from predpy.preprocessing import (
     use_dataframe_func, loc, iloc, get_isoforest_filter, get_variance_filter)
 from predpy.trainer import (
     CheckpointParams, TrainerParams, EarlyStoppingParams, LoggerParams)
+from predpy.experimentator import LearningParams
 from tsad.noiser import apply_noise_on_dataframes, white_noise
 from tsad.anomaly_detector import PredictionAnomalyDetector, ReconstructionAnomalyDetector
 from models import LSTMAE, LSTMVAE
@@ -69,12 +70,19 @@ c_in = 38
 c_out = 38
 
 models_params = [
+    # ModelParams(
+    #     name_="TadGAN_layer4_h200_z_100_gen1_dis1_warm2", cls_=TADGAN,
+    #     init_params=dict(
+    #         c_in=c_in, h_size=200, n_layers=2, z_size=100),
+    #     # learning_params=LearningParams(lr=1e-4),
+    #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+    #         gen_dis_train_loops=(1, 1), warmup_epochs=2)
+    # ),
     ModelParams(
-        name_="TadGAN", cls_=TADGAN,
+        name_="LSTMVAE", cls_=LSTMVAE,
         init_params=dict(
             c_in=c_in, h_size=200, n_layers=2, z_size=100),
-        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
-            gen_dis_train_loops=(1, 1))
+        WrapperCls=VAE
     ),
 ]
 
@@ -82,9 +90,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=100, gpus=1, auto_lr_find=True)
+    max_epochs=50, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=4, verbose=True)
+    monitor='val_loss', patience=4, min_delta=1e-4, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -98,7 +106,7 @@ exp = Experimentator(
 
 exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 # exp = load_experimentator(
-#     "./saved_experiments/2022-05-12_15:46:15.pkl"
+#     "./saved_experiments/2022-05-19_11:44:30.pkl"
 # )
 
-plot_exp_predictions(exp, dataset_idx=0, models_ids=[0])
+plot_exp_predictions(exp, dataset_idx=0)  # , models_ids=[0])

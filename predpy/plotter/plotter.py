@@ -520,6 +520,8 @@ def plot_exp_predictions(
     file_path: str = None
 ):
     d_params = exp.datasets_params.loc[dataset_idx]
+    if models_ids is None:
+        models_ids = exp.models_params.index
     ms_params = exp.models_params.loc[models_ids]
     models_names = ms_params["name_"].tolist()
     are_ae = ms_params["WrapperCls"].apply(

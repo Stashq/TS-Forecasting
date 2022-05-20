@@ -100,7 +100,7 @@ class LSTMVAE(nn.Module):
     ):
         super(LSTMVAE, self).__init__()
         self.encoder = Encoder(
-            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.z_mu_dense = nn.Linear(z_size, z_size)
         self.z_log_sig_dense = nn.Linear(z_size, z_size)
         self.decoder = Decoder(
@@ -117,8 +117,7 @@ class LSTMVAE(nn.Module):
         return (x_tilda, z_mu, z_log_sig)
 
     def decode(self, z, seq_len: int):
-        z_repeated = z.unsqueeze(1).repeat(1, seq_len, 1)
-        x_tilda = self.decoder(z_repeated)
+        x_tilda = self.decoder(z, seq_len=seq_len)
         return x_tilda
 
     def encode(self, x: torch.Tensor, return_all: bool = False):

@@ -354,7 +354,8 @@ class AnomalyDetector:
         classes: List[int] = None
     ):
         # if not issubclass(type(self.time_series_model), Reconstructor):
-        #     print("Cannot plot embeddings for model other than Reconstructor.")
+        #     print("Cannot plot embeddings for model\
+        # other than Reconstructor.")
         pca = PCA(n_components=3)
         embs_3d = pca.fit_transform(embs)
         plot_3d_embeddings(embs_3d, classes)

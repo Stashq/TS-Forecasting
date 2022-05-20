@@ -2,6 +2,7 @@ from torch import nn, optim
 from typing import Dict, Generator, List
 import torch
 from torch.nn.parameter import Parameter
+from sklearn.preprocessing import MinMaxScaler
 
 from predpy.wrapper import Reconstructor
 from .velc import VELC
@@ -16,7 +17,8 @@ class VELCWrapper(Reconstructor):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter, None, None] = None
+        params_to_train: Generator[Parameter, None, None] = None,
+        alpha: float = 0.5, beta: float = 0.5
     ):
         super(VELCWrapper, self).__init__(
             model=model, lr=lr, criterion=criterion,
@@ -25,6 +27,7 @@ class VELCWrapper(Reconstructor):
             target_cols_ids=target_cols_ids,
             params_to_train=params_to_train
         )
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
 
     def get_loss(
         self, x, x_dash, z_dash, z_mu, z_log_sig,
@@ -48,3 +51,21 @@ class VELCWrapper(Reconstructor):
         with torch.no_grad():
             x_dash, _, _, _, _, _, _ = self(x)
             return x_dash
+
+    def calculate_anomaly_score(self, x) -> float:
+        x_dash, z_dash, _, _, re_z_dash, _, _ = self.model(x)
+        score = self.alpha * torch.linalg.norm(x - x_dash, ord=1)
+        score += self.beta * torch.linalg.norm(z_dash - re_z_dash, ord=1)
+        return score.float()
+
+    def fit_anom_score_scaler(self, dataloader):
+        scores = []
+        for x, _ in dataloader:
+            s = self.calculate_anomaly(x)
+            scores += [s]
+        self.scaler.fit(scores)
+
+    def anomaly_score(self, x) -> float:
+        score = self.calculate_anomaly(x)
+        score = self.scaler(score)
+        return score
