@@ -8,6 +8,7 @@ from sklearn.linear_model import LogisticRegression
 from string import Template
 from sklearn.base import TransformerMixin
 from sklearn.metrics import confusion_matrix
+import torch
 from typing import Union, Tuple, Dict, List
 
 from predpy.dataset import MultiTimeSeriesDataloader
@@ -23,21 +24,10 @@ class AnomalyDetector(ModelWrapper):
     def __init__(
         self,
     ):
-        self.eval()
         self.thresholder = LogisticRegression()
 
     @abstractmethod
     def anomaly_score(self, model_output) -> float:
-        pass
-
-    @abstractmethod
-    def fit_detector(
-        self,
-        normal_data: MultiTimeSeriesDataloader,
-        anomaly_data: MultiTimeSeriesDataloader,
-        class_weight: Dict = {0: 0.5, 1: 0.5},  # {0: 0.05, 1: 0.95},
-        save_path: Path = None
-    ):
         pass
 
     def load_anom_scores(
@@ -73,7 +63,7 @@ class AnomalyDetector(ModelWrapper):
         classes: List[int] = None,
         scaler: TransformerMixin = None,
         class_weight: Dict = {0: 0.75, 1: 0.25}
-    ):
+    ) -> np.ndarray:
         scores, classes = np.array(scores), np.array(classes)
         if scaler is not None:
             # scaling scores
@@ -94,6 +84,70 @@ class AnomalyDetector(ModelWrapper):
         print(cm)
 
         return pred_cls
+
+    def score_dataset(
+        self, dataloader: MultiTimeSeriesDataloader,
+        scale: bool = True, return_pred: bool = False
+    ):
+        scores, preds = [], []
+        for batch in dataloader:
+            x = batch['sequence']
+            score = self.anomaly_score(
+                x, scale=scale, return_pred=return_pred)
+            if return_pred:
+                score, x_dash = score
+                preds += [x_dash]
+            scores += [score.float()]
+        return scores, preds
+
+    def fit_detector(
+        self,
+        normal_data: MultiTimeSeriesDataloader,
+        anomaly_data: MultiTimeSeriesDataloader,
+        class_weight: Dict = {0: 0.75, 1: 0.25},
+        save_path: Path = None,
+        plot: bool = False
+    ):
+        n_scores = self.score_dataset(
+            dataloader=normal_data, scale=False, return_pred=plot)
+        a_scores = self.score_dataset(
+            dataloader=anomaly_data, scale=False, return_pred=plot
+        )
+        if plot:
+            n_scores, n_preds = n_scores
+            a_scores, a_preds = a_scores
+
+        scores = n_scores + a_scores
+        classes = [0]*len(n_scores) + [1]*len(a_scores)
+        if save_path is not None:
+            self.save_anom_scores(scores, classes, save_path)
+
+        pred_cls = self.fit_thresholder(
+            scores=scores, classes=classes, scaler=self.scaler,
+            class_weight=class_weight)
+
+        if plot:
+            n_preds = torch.cat(n_preds).numpy()
+            a_preds = torch.cat(a_preds).numpy()
+
+            n_preds = self.preds_to_df(
+                normal_data, n_preds, return_quantiles=True)
+            a_preds = self.preds_to_df(
+                anomaly_data, a_preds, return_quantiles=True)
+
+            n_pred_anom_ids = pred_cls[np.argwhere(classes == 0)]
+            a_pred_anom_ids = pred_cls[np.argwhere(classes == 1)]
+
+            self.plot_with_time_series(
+                time_series=normal_data, pred_anomalies_ids=n_pred_anom_ids,
+                model_preds=n_preds, anomalies_as_intervals=True,
+                title='Normal data'
+            )
+            self.plot_with_time_series(
+                time_series=anomaly_data, pred_anomalies_ids=a_pred_anom_ids,
+                model_preds=a_preds, anomalies_as_intervals=True,
+                title='Anomaly data'
+            )
 
     def find_anomalies(
         self,
@@ -208,7 +262,7 @@ class AnomalyDetector(ModelWrapper):
             true_anomalies_intervals=true_anom_intervals,
             predictions=model_preds,
             detector_boundries=detector_boundries,
-            is_ae=issubclass(type(self.time_series_model), Reconstructor),
+            is_ae=issubclass(type(self), Reconstructor),
             title=title, file_path=file_path
         )
 

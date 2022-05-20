@@ -39,6 +39,7 @@ class ConstraintNet(nn.Module):
         w_hat = (w * w_mask).unsqueeze(dim=1)
 
         z_hat = w_hat @ C.transpose(1, 2)
+        z_hat = z_hat.squeeze()
         return z_hat
 
 
@@ -50,17 +51,17 @@ class VELC(nn.Module):
         super(VELC, self).__init__()
 
         self.encoder = Encoder(
-            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.z_mu_dense = nn.Linear(z_size, z_size)
         self.z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_1 = ConstraintNet(
             c_in=c_in, z_size=z_size, N=N_constraint, threshold=threshold)
 
         self.decoder = Decoder(
-            z_size=z_size, h_size=h_size, output_size=c_in, n_layers=n_layers)
+            z_size=z_size, h_size=h_size, x_size=c_in, n_layers=n_layers)
 
         self.re_encoder = Encoder(
-            x_size=c_in, h_size=h_size, n_layers=n_layers, z_size=z_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.re_z_mu_dense = nn.Linear(z_size, z_size)
         self.re_z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_2 = ConstraintNet(

@@ -78,11 +78,18 @@ models_params = [
     #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
     #         gen_dis_train_loops=(1, 1), warmup_epochs=2)
     # ),
+    # ModelParams(
+    #     name_="LSTMVAE", cls_=LSTMVAE,
+    #     init_params=dict(
+    #         c_in=c_in, h_size=200, n_layers=2, z_size=100),
+    #     WrapperCls=VAE
+    # ),
     ModelParams(
-        name_="LSTMVAE", cls_=LSTMVAE,
+        name_="VELC", cls_=VELC,
         init_params=dict(
-            c_in=c_in, h_size=200, n_layers=2, z_size=100),
-        WrapperCls=VAE
+            c_in=c_in, h_size=200, n_layers=2, z_size=100,
+            N_constraint=20, threshold=0),
+        WrapperCls=VELCWrapper
     ),
 ]
 
@@ -104,9 +111,16 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp.run_experiments(experiments_path="./saved_experiments", safe=False)
-# exp = load_experimentator(
-#     "./saved_experiments/2022-05-19_11:44:30.pkl"
-# )
+# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
+exp = load_experimentator(
+    "./saved_experiments/2022-05-21_00:57:43.pkl"
+)
 
-plot_exp_predictions(exp, dataset_idx=0)  # , models_ids=[0])
+# plot_exp_predictions(exp, dataset_idx=0)  # , models_ids=[0])
+
+
+velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
+tsm = exp.load_time_series_module(0)
+
+velc_model.fit_detector(
+    tsm.val_dataloader(), tsm.test_dataloader(), plot=True)

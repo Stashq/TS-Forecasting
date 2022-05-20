@@ -189,8 +189,8 @@ class Reconstructor(ModelWrapper):
         target_cols_ids: List[int] = None,
         params_to_train: Generator[Parameter, None, None] = None
     ):
-        super().__init__(
-            model=model, lr=lr, criterion=criterion,
+        ModelWrapper.__init__(
+            self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs,
             target_cols_ids=target_cols_ids, params_to_train=params_to_train)
         self.target_cols_ids = target_cols_ids
