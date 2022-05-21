@@ -43,8 +43,9 @@ def plot_predictions(
     scaler: TransformerMixin = None,
     are_ae: List[bool] = None,
     title: str = "Predictions",
-    file_path: str = None
-):
+    file_path: str = None,
+    prevent_plot: bool = False
+) -> go.Figure:
     """Plots predictions made during experiment run and true values.
 
     If any step of experiment hasn't been made, raise AssertionError.
@@ -82,8 +83,9 @@ def plot_predictions(
     fig.update_layout(height=800 * n_targets, title_text=title)
     if file_path is not None:
         plot(fig, filename=file_path)
-    else:
+    elif not prevent_plot:
         fig.show()
+    return fig
 
 
 def preds_and_true_vals_to_scatter_data(
@@ -105,10 +107,17 @@ def preds_and_true_vals_to_scatter_data(
     data = ts_to_plotly_data(
         true_vals, "true_vals", version, is_ae=False, target=target)
 
-    for i, (_, row) in enumerate(predictions.iterrows()):
+    # if passed dataframe of many models predictions
+    if "predictions" in predictions.columns:
+        for i, (_, row) in enumerate(predictions.iterrows()):
+            data += ts_to_plotly_data(
+                row["predictions"], models_names[i], version,
+                is_ae=are_ae[i], target=target)
+    # if passed dataframe of single model predictions
+    else:
         data += ts_to_plotly_data(
-            row["predictions"], models_names[i], version,
-            is_ae=are_ae[i], target=target)
+            predictions, models_names[0], version,
+            is_ae=are_ae[0], target=target)
     return data
 
 
@@ -579,41 +588,78 @@ def plot_aggregated_predictions(
 
 
 # ==============================================================
+
+# def plot_anomalies(
+#     time_series: Union[pd.Series, pd.DataFrame],
+#     pred_anomalies: Union[pd.Series, pd.DataFrame] = None,
+#     pred_anomalies_intervals: List[Tuple] = None,
+#     true_anomalies: Union[pd.Series, pd.DataFrame] = None,
+#     true_anomalies_intervals: Union[pd.Series, pd.DataFrame] = None,
+#     predictions: pd.DataFrame = None,
+#     detector_boundries: pd.DataFrame = None,
+#     is_ae: bool = False,
+#     title: str = "Finding anomalies",
+#     file_path: str = None
+# ):
+#     data = ts_to_plotly_data(time_series, "True values")
+
+#     if pred_anomalies is not None:
+#         data += pandas_to_scatter(
+#             vals=pred_anomalies, color=PREDICTED_ANOMALIES_COLOR,
+#             label="predicted anomalies")
+#     if predictions is not None:
+#         data += ts_to_plotly_data(predictions, "Predictions", is_ae=is_ae)
+#     if true_anomalies is not None:
+#         data += pandas_to_scatter(
+#             vals=pred_anomalies, color=TRUE_ANOMALIES_COLOR,
+#             label="true anomalies"
+#         )
+#     if detector_boundries is not None:
+#         data += ts_to_plotly_data(
+#             detector_boundries, "Boundries", is_boundries=True)
+#     layout = go.Layout(
+#         title=title,
+#         yaxis=dict(title='values'),
+#         xaxis=dict(title='dates')
+#     )
+
+#     fig = go.Figure(data=data, layout=layout)
+#     if pred_anomalies_intervals is not None:
+#         _add_vrects(
+#             fig, pred_anomalies_intervals,
+#             start=time_series.index[0], end=time_series.index[-1],
+#             fillcolor=PREDICTED_ANOMALIES_COLOR,
+#             opacity=0.3, layer="below", line_width=1
+#         )
+#     if true_anomalies_intervals is not None:
+#         _add_vrects(
+#             fig, true_anomalies_intervals,
+#             start=time_series.index[0], end=time_series.index[-1],
+#             fillcolor=TRUE_ANOMALIES_COLOR,
+#             opacity=0.3, layer="below", line_width=1
+#         )
+#     if file_path is not None:
+#         plot(fig, filename=file_path)
+#     else:
+#         fig.show()
+
 def plot_anomalies(
     time_series: Union[pd.Series, pd.DataFrame],
-    pred_anomalies: Union[pd.Series, pd.DataFrame] = None,
-    pred_anomalies_intervals: List[Tuple] = None,
-    true_anomalies: Union[pd.Series, pd.DataFrame] = None,
-    true_anomalies_intervals: Union[pd.Series, pd.DataFrame] = None,
     predictions: pd.DataFrame = None,
-    detector_boundries: pd.DataFrame = None,
-    is_ae: bool = False,
+    pred_anomalies_intervals: List[Tuple] = None,
+    true_anomalies_intervals: Union[pd.Series, pd.DataFrame] = None,
+    scaler: TransformerMixin = None,
+    is_ae: bool = True,
     title: str = "Finding anomalies",
+    model_name: str = "Model",
     file_path: str = None
 ):
-    data = ts_to_plotly_data(time_series, "True values")
-
-    if pred_anomalies is not None:
-        data += pandas_to_scatter(
-            vals=pred_anomalies, color=PREDICTED_ANOMALIES_COLOR,
-            label="predicted anomalies")
-    if predictions is not None:
-        data += ts_to_plotly_data(predictions, "Predictions", is_ae=is_ae)
-    if true_anomalies is not None:
-        data += pandas_to_scatter(
-            vals=pred_anomalies, color=TRUE_ANOMALIES_COLOR,
-            label="true anomalies"
-        )
-    if detector_boundries is not None:
-        data += ts_to_plotly_data(
-            detector_boundries, "Boundries", is_boundries=True)
-    layout = go.Layout(
-        title=title,
-        yaxis=dict(title='values'),
-        xaxis=dict(title='dates')
+    fig = plot_predictions(
+        predictions=predictions, true_vals=time_series,
+        models_names=[model_name], scaler=scaler,
+        are_ae=[is_ae], title=title, prevent_plot=True
     )
 
-    fig = go.Figure(data=data, layout=layout)
     if pred_anomalies_intervals is not None:
         _add_vrects(
             fig, pred_anomalies_intervals,
@@ -630,8 +676,7 @@ def plot_anomalies(
         )
     if file_path is not None:
         plot(fig, filename=file_path)
-    else:
-        fig.show()
+    fig.show()
 
 
 # ==============================================================

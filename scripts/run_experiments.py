@@ -121,6 +121,13 @@ exp = load_experimentator(
 velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
 tsm = exp.load_time_series_module(0)
 
+from predpy.plotter import plot_anomalies
+
+# ts = pd.concat(tsm.val_dataloader().dataset.sequences)
+# preds = pd.read_csv('./n_preds.csv')
+# preds.index = ts.index[1:]
+# plot_anomalies(ts, preds, [(23500, 24000)], [(24500, 25500)], None, True)
+
 velc_model.fit_detector(
     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
-    plot=True, class_weight={0: 0.5, 1: 0.5})
+    plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)

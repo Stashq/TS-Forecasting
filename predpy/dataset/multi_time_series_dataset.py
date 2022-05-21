@@ -358,6 +358,13 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
 
         return self.sequences[seq_id].iloc[data_ids][self.target]
 
+    def get_data_ids_by_rec_ids(self, rec_ids: List[int]) -> List:
+        ids = set()
+        for rec_id in rec_ids:
+            seq, _ = self.get_record(rec_id)
+            ids.update(seq.index.tolist())
+        return list(ids)
+
 
 class MultiTimeSeriesDataloader(DataLoader):
     def __init__(

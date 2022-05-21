@@ -62,12 +62,16 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
     def anomaly_score(
         self, x, scale: bool = True, return_pred: bool = False
     ) -> float:
+        batch_size = x.size(0)
         with torch.no_grad():
             x_dash, z_dash, _, _, re_z_dash, _, _ = self.model(x)
-            score = self.alpha * torch.linalg.norm(x - x_dash)
-            score += self.beta * torch.linalg.norm(z_dash - re_z_dash)
+            score = self.alpha * torch.linalg.norm(
+                (x - x_dash).reshape(batch_size, -1), ord=1, dim=1)
+            score += self.beta * torch.linalg.norm(
+                (z_dash - re_z_dash).reshape(batch_size, -1), ord=1, dim=1)
+            score = score.tolist()
             if scale:
-                score = self.scaler(score)
+                score = self.scores_scaler.transform(score).flatten().tolist()
             if return_pred:
                 return score, x_dash
             return score
