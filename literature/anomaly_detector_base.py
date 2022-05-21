@@ -9,6 +9,7 @@ from string import Template
 from sklearn.base import TransformerMixin
 from sklearn.metrics import confusion_matrix
 import torch
+from tqdm.auto import tqdm
 from typing import Union, Tuple, Dict, List
 
 from predpy.dataset import MultiTimeSeriesDataloader
@@ -34,12 +35,12 @@ class AnomalyDetector(ModelWrapper):
         self, path: Path
     ) -> Tuple[List[float], List[int]]:
         with open(path, 'r') as f:
-            rows = csv.reader(f)
+            reader = csv.DictReader(f)
             scores = []
             classes = []
-            for row in rows:
-                scores += [row[0]]
-                classes += [row[1]]
+            for row in reader:
+                scores += [float(row['score'])]
+                classes += [int(row['class'])]
         return scores, classes
 
     def save_anom_scores(
@@ -64,7 +65,7 @@ class AnomalyDetector(ModelWrapper):
         scaler: TransformerMixin = None,
         class_weight: Dict = {0: 0.75, 1: 0.25}
     ) -> np.ndarray:
-        scores, classes = np.array(scores), np.array(classes)
+        scores, classes = np.array(scores).reshape(-1, 1), np.array(classes)
         if scaler is not None:
             # scaling scores
             n_scores = scaler.fit_transform(
@@ -76,8 +77,9 @@ class AnomalyDetector(ModelWrapper):
             scores[np.where(classes == 1)] = a_scores
 
         # fitting thresholder
-        self.thresholder.class_weight = class_weight
-        pred_cls = self.thresholder.fit_intercept(scores, classes)
+        self.thresholder = LogisticRegression(
+            class_weight=class_weight).fit(scores, classes)
+        pred_cls = self.thresholder.predict(scores)
 
         # printing classification results
         cm = confusion_matrix(classes, pred_cls)
@@ -90,37 +92,45 @@ class AnomalyDetector(ModelWrapper):
         scale: bool = True, return_pred: bool = False
     ):
         scores, preds = [], []
-        for batch in dataloader:
+        for batch in tqdm(
+                dataloader, desc='Calculating dataset anomaly scores'):
             x = batch['sequence']
             score = self.anomaly_score(
                 x, scale=scale, return_pred=return_pred)
             if return_pred:
                 score, x_dash = score
                 preds += [x_dash]
-            scores += [score.float()]
-        return scores, preds
+            scores += [score.tolist()]
+        if return_pred:
+            return scores, preds
+        return scores
 
     def fit_detector(
         self,
         normal_data: MultiTimeSeriesDataloader,
         anomaly_data: MultiTimeSeriesDataloader,
         class_weight: Dict = {0: 0.75, 1: 0.25},
+        load_path: Path = None,
         save_path: Path = None,
         plot: bool = False
     ):
-        n_scores = self.score_dataset(
-            dataloader=normal_data, scale=False, return_pred=plot)
-        a_scores = self.score_dataset(
-            dataloader=anomaly_data, scale=False, return_pred=plot
-        )
-        if plot:
-            n_scores, n_preds = n_scores
-            a_scores, a_preds = a_scores
+        self.eval()
+        if load_path is not None:
+            scores, classes = self.load_anom_scores(load_path)
+        else:
+            n_scores = self.score_dataset(
+                dataloader=normal_data, scale=False, return_pred=plot)
+            a_scores = self.score_dataset(
+                dataloader=anomaly_data, scale=False, return_pred=plot
+            )
+            if plot:
+                n_scores, n_preds = n_scores
+                a_scores, a_preds = a_scores
 
-        scores = n_scores + a_scores
-        classes = [0]*len(n_scores) + [1]*len(a_scores)
-        if save_path is not None:
-            self.save_anom_scores(scores, classes, save_path)
+            scores = n_scores + a_scores
+            classes = [0]*len(n_scores) + [1]*len(a_scores)
+            if save_path is not None:
+                self.save_anom_scores(scores, classes, save_path)
 
         pred_cls = self.fit_thresholder(
             scores=scores, classes=classes, scaler=self.scaler,
@@ -187,7 +197,7 @@ class AnomalyDetector(ModelWrapper):
         anom_ids: List[int],
         time_series: MultiTimeSeriesDataloader,
     ):
-        if issubclass(type(self.time_series_model), Reconstructor):
+        if issubclass(type(self), Reconstructor):
             df = time_series.dataset.global_ids_to_data(
                 anom_ids)
         else:

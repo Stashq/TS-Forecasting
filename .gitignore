@@ -152,3 +152,4 @@ notebooks/*
 !notebooks/*.ipynb
 
 pages
+tmp.csv

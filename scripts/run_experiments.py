@@ -118,9 +118,9 @@ exp = load_experimentator(
 
 # plot_exp_predictions(exp, dataset_idx=0)  # , models_ids=[0])
 
-
 velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
 tsm = exp.load_time_series_module(0)
 
 velc_model.fit_detector(
-    tsm.val_dataloader(), tsm.test_dataloader(), plot=True)
+    tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
+    plot=True, class_weight={0: 0.5, 1: 0.5})
