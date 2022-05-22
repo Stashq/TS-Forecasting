@@ -1,15 +1,19 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from models import Encoder, Decoder
 
 
 class ConstraintNet(nn.Module):
-    def __init__(self, c_in: int, z_size: int, N: int, threshold: float):
+    def __init__(
+        self, c_in: int, window_size: int, z_size: int, 
+        N: int, threshold: float
+    ):
         super(ConstraintNet, self).__init__()
 
-        self.l1 = nn.Linear(c_in, 8)
+        self.l1 = nn.Linear(c_in*window_size, 8)
         self.l2 = nn.Linear(8, 16)
-        self.l3 = nn.Linear(16, N)
+        self.l3 = nn.Linear(16, z_size*N)
         self.cos = nn.CosineSimilarity(dim=-1)
 
         # self.layer1 = layers.Dense(8, input_dim=c_in, activation='relu')
@@ -21,14 +25,16 @@ class ConstraintNet(nn.Module):
         self.z_size = z_size
         self.threshold = threshold
 
-    def forward(self, x, z):
-        x = self.l1(x)
-        x = self.l2(x)
+    def forward(self, x: torch.Tensor, z: torch.Tensor):
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+        x = F.relu(self.l1(x))
+        x = F.relu(self.l2(x))
         C = self.l3(x)
-        # C = x.view(-1, self.N, self.z_size)
+        C = C.view(-1, self.N, self.z_size)
 
         w = torch.concat([
-            self.cos(z, C[:, :, i])
+            self.cos(z, C[:, i, :])
             for i in range(self.N)
         ]).view(-1, self.N)
 
@@ -38,14 +44,14 @@ class ConstraintNet(nn.Module):
         w_mask = (w > self.threshold).float()
         w_hat = (w * w_mask).unsqueeze(dim=1)
 
-        z_hat = w_hat @ C.transpose(1, 2)
+        z_hat = w_hat @ C
         z_hat = z_hat.squeeze()
         return z_hat
 
 
 class VELC(nn.Module):
     def __init__(
-        self, c_in: int, h_size: int,  n_layers: int,
+        self, c_in: int, window_size: int, h_size: int,  n_layers: int,
         z_size: int, N_constraint: int, threshold: float
     ):
         super(VELC, self).__init__()
@@ -55,7 +61,8 @@ class VELC(nn.Module):
         self.z_mu_dense = nn.Linear(z_size, z_size)
         self.z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_1 = ConstraintNet(
-            c_in=c_in, z_size=z_size, N=N_constraint, threshold=threshold)
+            c_in=c_in, window_size=window_size, z_size=z_size,
+            N=N_constraint, threshold=threshold)
 
         self.decoder = Decoder(
             z_size=z_size, h_size=h_size, x_size=c_in, n_layers=n_layers)
@@ -65,7 +72,8 @@ class VELC(nn.Module):
         self.re_z_mu_dense = nn.Linear(z_size, z_size)
         self.re_z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_2 = ConstraintNet(
-            c_in=c_in, z_size=z_size, N=N_constraint, threshold=threshold)
+            c_in=c_in, window_size=window_size, z_size=z_size,
+            N=N_constraint, threshold=threshold)
 
     def reparametrization(self, mu, log_sig):
         eps = torch.randn_like(mu)

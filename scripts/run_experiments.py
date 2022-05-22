@@ -106,28 +106,28 @@ models_params = [
     ModelParams(
         name_="VELC_h200_l2_z300", cls_=VELC,
         init_params=dict(
-            c_in=c_in, h_size=200, n_layers=2, z_size=300,
+            c_in=c_in, window_size=window_size, h_size=200, n_layers=2, z_size=300,
             N_constraint=20, threshold=0),
         WrapperCls=VELCWrapper
     ),
     ModelParams(
         name_="VELC_h200_l2_z400", cls_=VELC,
         init_params=dict(
-            c_in=c_in, h_size=200, n_layers=2, z_size=400,
+            c_in=c_in, window_size=window_size, h_size=200, n_layers=2, z_size=400,
             N_constraint=20, threshold=0),
         WrapperCls=VELCWrapper
     ),
     ModelParams(
         name_="VELC_h200_l3_z400", cls_=VELC,
         init_params=dict(
-            c_in=c_in, h_size=200, n_layers=3, z_size=400,
+            c_in=c_in, window_size=window_size, h_size=200, n_layers=3, z_size=400,
             N_constraint=20, threshold=0),
         WrapperCls=VELCWrapper
     ),
     ModelParams(
         name_="VELC_h300_l3_z400", cls_=VELC,
         init_params=dict(
-            c_in=c_in, h_size=300, n_layers=3, z_size=400,
+            c_in=c_in, window_size=window_size, h_size=300, n_layers=3, z_size=400,
             N_constraint=20, threshold=0),
         WrapperCls=VELCWrapper
     ),
@@ -199,7 +199,7 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp.run_experiments(experiments_path="./saved_experiments", safe=True)
+exp.run_experiments(experiments_path="./saved_experiments", safe=False)
 # exp = load_experimentator(
 #     "./saved_experiments/2022-05-21_00:57:43.pkl"
 # )
