@@ -36,7 +36,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 from torch import nn
-from typing import List
+from typing import List, Dict, Literal
 
 # =============================================================================
 
@@ -123,43 +123,69 @@ velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
 tsm = exp.load_time_series_module(0)
 
 from predpy.plotter import plot_anomalies
+from pathlib import Path
 
 # ts = pd.concat(tsm.val_dataloader().dataset.sequences)
 # preds = pd.read_csv('./n_preds.csv')
 # preds.index = ts.index[1:]
 # plot_anomalies(ts, preds, [(23500, 24000)], [(24500, 25500)], None, True)
 
-df = pd.read_csv(
-    './data/Industry/ServerMachineDataset/test/machine-1-1.csv',
-    names=list(range(38)), header=None
-)
-dataset = MultiTimeSeriesDataset(
-    sequences=[df],
-    window_size=window_size,
-    target=df.columns.tolist()
-)
-data_classes = pd.read_csv(
-    './data/Industry/ServerMachineDataset/test_label/machine-1-1.csv', header=None)\
-    .iloc[:, 0].to_list()
-rec_classes = dataset.get_recs_cls_by_data_cls(
-    data_classes, min_points=5)
 
-dataloader = DataLoader(
-    dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    num_workers=8
-)
+def fit_run_detection(
+    test_path, test_cls_path, min_points: int,
+    plot: bool, scale_scores: bool, save_html_path=None,
+    class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
+    save_path: Path = None, start_plot_pos: int = None,
+    end_plot_pos: int = None
+):
+    """test_path file should contain columns of features without header in first line,
+    test_cls file has to be csv with one column filled with values 0 (normal data) 1 (anomaly),
+    min_points is minimal points required in record sequence to be anomaly,
+    scale_scores should be True only if model requires scaling anomaly scores"""
+    df = pd.read_csv(
+        test_path, names=list(range(38)), header=None
+    )
+    dataset = MultiTimeSeriesDataset(
+        sequences=[df],
+        window_size=window_size,
+        target=df.columns.tolist()
+    )
+    data_classes = pd.read_csv(
+        test_cls_path, header=None)\
+        .iloc[:, 0].to_list()
+    rec_classes = dataset.get_recs_cls_by_data_cls(
+        data_classes, min_points=min_points)
 
-velc_model.fit_detector(
-    dataloader=dataloader,
-    classes=np.array(rec_classes),
-    plot=True, scale_scores=True,
-    save_html_path='pages/tmp_anomaly_detection.html',
-    class_weight={0: 0.1, 1: 0.9},
-    save_path='./anom_scores.csv',
-    start_plot_pos=15000, end_plot_pos=22000
-)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=8
+    )
+
+    velc_model.fit_detector(
+        dataloader=dataloader,
+        classes=np.array(rec_classes),
+        plot=plot, scale_scores=scale_scores,
+        save_html_path=save_html_path,
+        class_weight=class_weight,
+        save_path=save_path,
+        start_plot_pos=start_plot_pos,
+        end_plot_pos=end_plot_pos
+    )
+
+test_path = './data/Industry/ServerMachineDataset/test/machine-1-1.csv'
+test_cls_path = './data/Industry/ServerMachineDataset/test_label/machine-1-1.csv'
+min_points = 5
+plot = True
+scale_scores = True
+save_html_path = './pages/tmp_anomaly_detection.html'
+class_weight = {0: 0.1, 1: 0.9}
+save_path = './anom_scores.csv'
+start_plot_pos = 15000
+end_plot_pos = 21000
+fit_run_detection(
+    test_path=test_path, test_cls_path=test_cls_path, min_points=min_points)
 # velc_model.fit_detector(
 #     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
 #     plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)
