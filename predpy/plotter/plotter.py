@@ -285,9 +285,9 @@ def _reconstruction_quantiles_to_scatters(
 def _preds_to_scatters(
     ts: pd.Series, name: str, version: str = "", target: str = None
 ) -> List[go.Scatter]:
-    columns = ts.columns
+    columns = ts.columns.tolist()
     if target is not None:
-        columns = filter(lambda x: x == target, columns)
+        columns = list(filter(lambda x: str(x) == str(target), columns))
 
     scatter_data = []
     for col in columns:

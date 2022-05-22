@@ -36,11 +36,12 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 from torch import nn
-
+from typing import List
 
 # =============================================================================
 
 window_size = 100
+batch_size = 64
 
 load_params = {
     "header": None, "names": [str(i) for i in range(38)]
@@ -59,7 +60,7 @@ datasets_params = [
         target=[str(i) for i in range(38)],
         split_proportions=[0.8, 0.1, 0.1],
         window_size=window_size,
-        batch_size=64,
+        batch_size=batch_size,
         drop_refill_pipeline=drop_refill_pipeline,
         preprocessing_pipeline=preprocessing_pipeline,
         detect_anomalies_pipeline=detect_anomalies_pipeline,
@@ -128,6 +129,37 @@ from predpy.plotter import plot_anomalies
 # preds.index = ts.index[1:]
 # plot_anomalies(ts, preds, [(23500, 24000)], [(24500, 25500)], None, True)
 
+df = pd.read_csv(
+    './data/Industry/ServerMachineDataset/test/machine-1-1.csv',
+    names=list(range(38)), header=None
+)
+dataset = MultiTimeSeriesDataset(
+    sequences=[df],
+    window_size=window_size,
+    target=df.columns.tolist()
+)
+data_classes = pd.read_csv(
+    './data/Industry/ServerMachineDataset/test_label/machine-1-1.csv', header=None)\
+    .iloc[:, 0].to_list()
+rec_classes = dataset.get_recs_cls_by_data_cls(
+    data_classes, min_points=5)
+
+dataloader = DataLoader(
+    dataset,
+    batch_size=batch_size,
+    shuffle=False,
+    num_workers=8
+)
+
 velc_model.fit_detector(
-    tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
-    plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)
+    dataloader=dataloader,
+    classes=np.array(rec_classes),
+    plot=True, scale_scores=True,
+    save_html_path='pages/tmp_anomaly_detection.html',
+    class_weight={0: 0.1, 1: 0.9},
+    save_path='./anom_scores.csv',
+    start_plot_pos=15000, end_plot_pos=22000
+)
+# velc_model.fit_detector(
+#     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
+#     plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)

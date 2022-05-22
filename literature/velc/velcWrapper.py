@@ -1,5 +1,5 @@
 from torch import nn, optim
-from typing import Dict, Generator, List
+from typing import Dict, Generator, List, Tuple, Union
 import torch
 from torch.nn.parameter import Parameter
 from sklearn.preprocessing import MinMaxScaler
@@ -61,7 +61,7 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
 
     def anomaly_score(
         self, x, scale: bool = True, return_pred: bool = False
-    ) -> float:
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         batch_size = x.size(0)
         with torch.no_grad():
             x_dash, z_dash, _, _, re_z_dash, _, _ = self.model(x)

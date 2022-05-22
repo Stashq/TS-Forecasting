@@ -7,8 +7,9 @@ import torch
 import numpy as np
 import pandas as pd
 from .time_series_dataset import TimeSeriesDataset
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Literal, Tuple, Union
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 
 class MultiTimeSeriesDataset(TimeSeriesDataset):
@@ -364,6 +365,53 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             seq, _ = self.get_record(rec_id)
             ids.update(seq.index.tolist())
         return list(ids)
+
+    def get_recs_cls_by_data_cls(
+        self, data_cls: List, min_points: int = 1
+    ) -> List[int]:
+        col_name = 'class'
+        self._add_column(col_name, data_cls)
+        res = []
+        for i in tqdm(range(self.__len__()), 'Collecting record classes'):
+            res += [self._get_rec_class(
+                idx=i, col_name=col_name, min_points=min_points)]
+        self._remove_column(col_name)
+        return res
+
+    def _get_rec_class(
+        self, idx, col_name, min_points: int = 1
+    ) -> Literal[0, 1]:
+        seq, _ = self.get_record(idx)
+        n_cls_points = seq[seq[col_name] == 1].shape[0]
+        if n_cls_points < min_points:
+            return 0
+        else:
+            return 1
+
+    def _add_column(
+        self, new_col_name, values: List,
+        include_col_in_target: bool = False
+    ):
+        len_ = sum([seq.shape[0] for seq in self.sequences])
+        if len_ != len(values):
+            raise ValueError(
+                'Data len %d different than values len %d.'
+                % (len_, len(values)))
+
+        for seq in self.sequences:
+            seq_len = seq.shape[0]
+            seq[new_col_name] = values[:seq_len]
+            values = values[seq_len:]
+
+        if include_col_in_target:
+            self.target = self.target + [new_col_name]
+
+    def _remove_column(self, col_name):
+        for seq in self.sequences:
+            seq.drop([col_name], axis=1, inplace=True)
+
+        if col_name in self.target:
+            self.target.remove(col_name)
 
 
 class MultiTimeSeriesDataloader(DataLoader):

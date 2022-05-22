@@ -30,10 +30,80 @@ class AnomalyDetector(ModelWrapper):
         self.scores_scaler = MinMaxScaler()
 
     @abstractmethod
-    def anomaly_score(self, x, return_pred: bool = False) -> float:
+    def anomaly_score(self, x, return_pred: bool = False) -> List[float]:
         pass
 
     def fit_detector(
+        self,
+        dataloader: MultiTimeSeriesDataloader,
+        classes: np.ndarray = None,
+        load_path: Path = None,
+        save_path: Path = None,
+        class_weight: Dict = {0: 0.75, 1: 0.25},
+        plot: bool = False,
+        start_plot_pos: int = None,
+        end_plot_pos: int = None,
+        scale_scores: bool = False,
+        ts_scaler: TransformerMixin = None,
+        save_html_path: Path = None
+    ):
+        assert classes is not None or load_path is not None,\
+            'Classes can not be None. Pass it or load from file.'
+        if load_path is not None:
+            scores, classes = self.load_anom_scores(load_path)
+        else:
+            scores = self.score_dataset(
+                dataloader=dataloader, scale=False, return_pred=plot)
+            if plot:
+                scores, preds = scores
+            if save_path is not None:
+                self.save_anom_scores(
+                    scores=scores, classes=classes, path=save_path)
+        pred_cls = self.fit_thresholder(
+            scores=scores, classes=classes, scale_scores=scale_scores,
+            class_weight=class_weight)
+
+        if plot:
+            self.plot_preds_and_anomalies(
+                dataloader=dataloader, preds=preds,
+                classes=np.array(classes), pred_cls=pred_cls,
+                scaler=ts_scaler, save_html_path=save_html_path,
+                start_pos=start_plot_pos, end_pos=end_plot_pos)
+
+    def plot_preds_and_anomalies(
+        self,
+        dataloader: MultiTimeSeriesDataloader, preds: torch.Tensor,
+        classes: np.ndarray, pred_cls: np.ndarray,
+        scaler: TransformerMixin = None,
+        save_html_path: Path = None,
+        start_pos=None, end_pos=None
+    ):
+        preds = torch.cat(preds).numpy()
+        preds = self.preds_to_df(
+            dataloader, preds, return_quantiles=True)
+
+        pred_anom_ids = np.argwhere(pred_cls == 1)
+        pred_anom_ids = dataloader.dataset.\
+            get_data_ids_by_rec_ids(np.squeeze(pred_anom_ids).tolist())
+        true_anom_ids = np.argwhere(classes == 1)
+        true_anom_ids = dataloader.dataset.\
+            get_data_ids_by_rec_ids(np.squeeze(true_anom_ids).tolist())
+
+        pred_anom_intervals = self._get_ids_ranges(pred_anom_ids)
+        true_anom_intervals = self._get_ids_ranges(true_anom_ids)
+
+        plot_anomalies(
+            time_series=pd.concat(
+                dataloader.dataset.sequences
+            ).iloc[start_pos:end_pos],
+            predictions=preds.iloc[start_pos:end_pos],
+            pred_anomalies_intervals=pred_anom_intervals,
+            true_anomalies_intervals=true_anom_intervals,
+            scaler=scaler, is_ae=issubclass(type(self), Reconstructor),
+            title='Anomaly detection results', file_path=save_html_path
+        )
+
+    def fit_detector_2_datasets(
         self,
         normal_data: MultiTimeSeriesDataloader,
         anomaly_data: MultiTimeSeriesDataloader,
@@ -74,7 +144,7 @@ class AnomalyDetector(ModelWrapper):
                 classes=classes, pred_cls=pred_cls,
                 scaler=ts_scaler, save_html_path=save_html_path)
 
-    def plot_preds_and_anomalies(
+    def plot_preds_and_anomalies_2_datasets(
         self, n_preds: torch.Tensor, a_preds: torch.Tensor,
         normal_data: MultiTimeSeriesDataloader,
         anomaly_data: MultiTimeSeriesDataloader,
@@ -135,6 +205,8 @@ class AnomalyDetector(ModelWrapper):
         ids: List,
         max_break: Union[int, timedelta] = None
     ) -> Union[pd.Series, pd.DataFrame]:
+        if len(ids) == 0:
+            return []
         ids = pd.Series(ids).sort_values()
         diffs = ids.diff()
 
@@ -228,7 +300,7 @@ class AnomalyDetector(ModelWrapper):
     def score_dataset(
         self, dataloader: MultiTimeSeriesDataloader,
         scale: bool = True, return_pred: bool = False
-    ):
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         scores_list, preds = [], []
         for batch in tqdm(
                 dataloader, desc='Calculating dataset anomaly scores'):
