@@ -27,6 +27,7 @@ from literature.anom_trans import AnomalyTransformer, ATWrapper
 from literature.velc import VELC, VELCWrapper
 from literature.dagmm import DAGMM, DAGMMWrapper
 from literature.tadgan import TADGAN, TADGANWrapper
+from literature.anomaly_detector_base import AnomalyDetector
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -43,7 +44,7 @@ from pathlib import Path
 
 # =============================================================================
 
-window_size = 100
+window_size = 400
 batch_size = 64
 
 load_params = {
@@ -68,6 +69,28 @@ datasets_params = [
         preprocessing_pipeline=preprocessing_pipeline,
         detect_anomalies_pipeline=detect_anomalies_pipeline,
         scaler=StandardScaler()),
+    DatasetParams(
+        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/machine-1-2.csv",
+        load_params=load_params,
+        target=[str(i) for i in range(38)],
+        split_proportions=[0.8, 0.1, 0.1],
+        window_size=window_size,
+        batch_size=batch_size,
+        drop_refill_pipeline=drop_refill_pipeline,
+        preprocessing_pipeline=preprocessing_pipeline,
+        detect_anomalies_pipeline=detect_anomalies_pipeline,
+        scaler=StandardScaler()),
+    DatasetParams(
+        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/machine-1-3.csv",
+        load_params=load_params,
+        target=[str(i) for i in range(38)],
+        split_proportions=[0.8, 0.1, 0.1],
+        window_size=window_size,
+        batch_size=batch_size,
+        drop_refill_pipeline=drop_refill_pipeline,
+        preprocessing_pipeline=preprocessing_pipeline,
+        detect_anomalies_pipeline=detect_anomalies_pipeline,
+        scaler=StandardScaler()),
 ]
 
 c_in = 38
@@ -75,26 +98,87 @@ c_out = 38
 
 models_params = [
     # ModelParams(
-    #     name_="TadGAN_layer4_h200_z_100_gen1_dis1_warm2", cls_=TADGAN,
-    #     init_params=dict(
-    #         c_in=c_in, h_size=200, n_layers=2, z_size=100),
-    #     # learning_params=LearningParams(lr=1e-4),
-    #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
-    #         gen_dis_train_loops=(1, 1), warmup_epochs=2)
-    # ),
-    # ModelParams(
     #     name_="LSTMVAE", cls_=LSTMVAE,
     #     init_params=dict(
     #         c_in=c_in, h_size=200, n_layers=2, z_size=100),
     #     WrapperCls=VAE
     # ),
     ModelParams(
-        name_="VELC", cls_=VELC,
+        name_="VELC_h200_l2_z300", cls_=VELC,
         init_params=dict(
-            c_in=c_in, h_size=200, n_layers=2, z_size=100,
+            c_in=c_in, h_size=200, n_layers=2, z_size=300,
             N_constraint=20, threshold=0),
         WrapperCls=VELCWrapper
     ),
+    ModelParams(
+        name_="VELC_h200_l2_z400", cls_=VELC,
+        init_params=dict(
+            c_in=c_in, h_size=200, n_layers=2, z_size=400,
+            N_constraint=20, threshold=0),
+        WrapperCls=VELCWrapper
+    ),
+    ModelParams(
+        name_="VELC_h200_l3_z400", cls_=VELC,
+        init_params=dict(
+            c_in=c_in, h_size=200, n_layers=3, z_size=400,
+            N_constraint=20, threshold=0),
+        WrapperCls=VELCWrapper
+    ),
+    ModelParams(
+        name_="VELC_h300_l3_z400", cls_=VELC,
+        init_params=dict(
+            c_in=c_in, h_size=300, n_layers=3, z_size=400,
+            N_constraint=20, threshold=0),
+        WrapperCls=VELCWrapper
+    ),
+    ModelParams(
+        name_="TadGAN_h200_l2_z100_gen1_dis1_warm2", cls_=TADGAN,
+        init_params=dict(
+            c_in=c_in, h_size=200, n_layers=2, z_size=100),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(1, 1), warmup_epochs=2)
+    ),
+    ModelParams(
+        name_="TadGAN_h200_l2_z100_gen1_dis1_warm5", cls_=TADGAN,
+        init_params=dict(
+            c_in=c_in, h_size=200, n_layers=2, z_size=100),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(1, 1), warmup_epochs=5)
+    ),
+    ModelParams(
+        name_="TadGAN_h200_l2_z400_gen3_dis1_warm5", cls_=TADGAN,
+        init_params=dict(
+            c_in=c_in, h_size=200, n_layers=2, z_size=400),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(3, 1), warmup_epochs=5)
+    ),
+    ModelParams(
+        name_="TadGAN_h300_l3_z400_gen3_dis1_warm5", cls_=TADGAN,
+        init_params=dict(
+            c_in=c_in, h_size=300, n_layers=3, z_size=400),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(3, 1), warmup_epochs=5)
+    ),
+    ModelParams(
+        name_="AnomTrans_l2", cls_=AnomalyTransformer,
+        init_params=dict(
+            N=window_size, d_model=c_in, layers=2, lambda_=0.5),
+        WrapperCls=ATWrapper),
+    ModelParams(
+        name_="AnomTrans_l3", cls_=AnomalyTransformer,
+        init_params=dict(
+            N=window_size, d_model=c_in, layers=3, lambda_=0.5),
+        WrapperCls=ATWrapper),
+    ModelParams(
+        name_="AnomTrans_l4", cls_=AnomalyTransformer,
+        init_params=dict(
+            N=window_size, d_model=c_in, layers=3, lambda_=0.5),
+        WrapperCls=ATWrapper),
+    ModelParams(
+        name_="AnomTrans_l5", cls_=AnomalyTransformer,
+        init_params=dict(
+            N=window_size, d_model=c_in, layers=3, lambda_=0.5),
+        WrapperCls=ATWrapper),
 ]
 
 chp_p = CheckpointParams(
@@ -115,15 +199,25 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-# exp.run_experiments(experiments_path="./saved_experiments", safe=False)
-exp = load_experimentator(
-    "./saved_experiments/2022-05-21_00:57:43.pkl"
-)
+exp.run_experiments(experiments_path="./saved_experiments", safe=True)
+# exp = load_experimentator(
+#     "./saved_experiments/2022-05-21_00:57:43.pkl"
+# )
 
-# plot_exp_predictions(exp, dataset_idx=0)  # , models_ids=[0])
+plot_exp_predictions(
+    exp, dataset_idx=0,
+    file_path='./pages/ServerMachineDataset/machine-1-1/%s.html' % str(exp.exp_date))
 
-velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
-tsm = exp.load_time_series_module(0)
+plot_exp_predictions(
+    exp, dataset_idx=1,
+    file_path='./pages/ServerMachineDataset/machine-1-2/%s.html' % str(exp.exp_date))
+
+plot_exp_predictions(
+    exp, dataset_idx=2,
+    file_path='./pages/ServerMachineDataset/machine-1-3/%s.html' % str(exp.exp_date))
+
+# velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
+# tsm = exp.load_time_series_module(0)
 
 # ts = pd.concat(tsm.val_dataloader().dataset.sequences)
 # preds = pd.read_csv('./n_preds.csv')
@@ -132,7 +226,7 @@ tsm = exp.load_time_series_module(0)
 
 
 def fit_run_detection(
-    test_path, test_cls_path, min_points: int,
+    model: AnomalyDetector, test_path, test_cls_path, min_points: int,
     plot: bool, scale_scores: bool, save_html_path=None,
     class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
     save_path: Path = None, ts_scaler: TransformerMixin = None,
@@ -164,7 +258,7 @@ def fit_run_detection(
         num_workers=8
     )
 
-    velc_model.fit_detector(
+    model.fit_detector(
         dataloader=dataloader,
         classes=np.array(rec_classes),
         plot=plot, scale_scores=scale_scores,
@@ -177,15 +271,15 @@ def fit_run_detection(
     )
 
 
-fit_run_detection(
-    test_path='./data/Industry/ServerMachineDataset/test/machine-1-1.csv',
-    test_cls_path='./data/Industry/ServerMachineDataset/test_label/machine-1-1.csv',
-    min_points=5, scale_scores=True, class_weight = {0: 0.1, 1: 0.9},
-    ts_scaler=exp.get_targets_scaler(0),
-    save_path='./anom_scores.csv',
-    plot=True, start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/tmp_anomaly_detection.html'
-)
+# fit_run_detection(
+#     test_path='./data/Industry/ServerMachineDataset/test/machine-1-1.csv',
+#     test_cls_path='./data/Industry/ServerMachineDataset/test_label/machine-1-1.csv',
+#     min_points=5, scale_scores=True, class_weight = {0: 0.1, 1: 0.9},
+#     ts_scaler=exp.get_targets_scaler(0),
+#     save_path='./anom_scores.csv',
+#     plot=True, start_plot_pos=15000, end_plot_pos=21000,
+#     save_html_path='./pages/tmp_anomaly_detection.html'
+# )
 # velc_model.fit_detector(
 #     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
 #     plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)
