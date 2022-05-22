@@ -32,11 +32,14 @@ from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.base import TransformerMixin
 # from tsai.models import TCN, ResNet, TST, RNN, TransformerModel, FCN
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 from torch import nn
 from typing import List, Dict, Literal
+from predpy.plotter import plot_anomalies
+from pathlib import Path
 
 # =============================================================================
 
@@ -122,9 +125,6 @@ exp = load_experimentator(
 velc_model = exp.load_pl_model(0, './checkpoints/machine-1-1/VELC/')
 tsm = exp.load_time_series_module(0)
 
-from predpy.plotter import plot_anomalies
-from pathlib import Path
-
 # ts = pd.concat(tsm.val_dataloader().dataset.sequences)
 # preds = pd.read_csv('./n_preds.csv')
 # preds.index = ts.index[1:]
@@ -135,7 +135,8 @@ def fit_run_detection(
     test_path, test_cls_path, min_points: int,
     plot: bool, scale_scores: bool, save_html_path=None,
     class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
-    save_path: Path = None, start_plot_pos: int = None,
+    save_path: Path = None, ts_scaler: TransformerMixin = None,
+    start_plot_pos: int = None,
     end_plot_pos: int = None
 ):
     """test_path file should contain columns of features without header in first line,
@@ -170,22 +171,21 @@ def fit_run_detection(
         save_html_path=save_html_path,
         class_weight=class_weight,
         save_path=save_path,
+        ts_scaler=ts_scaler,
         start_plot_pos=start_plot_pos,
         end_plot_pos=end_plot_pos
     )
 
-test_path = './data/Industry/ServerMachineDataset/test/machine-1-1.csv'
-test_cls_path = './data/Industry/ServerMachineDataset/test_label/machine-1-1.csv'
-min_points = 5
-plot = True
-scale_scores = True
-save_html_path = './pages/tmp_anomaly_detection.html'
-class_weight = {0: 0.1, 1: 0.9}
-save_path = './anom_scores.csv'
-start_plot_pos = 15000
-end_plot_pos = 21000
+
 fit_run_detection(
-    test_path=test_path, test_cls_path=test_cls_path, min_points=min_points)
+    test_path='./data/Industry/ServerMachineDataset/test/machine-1-1.csv',
+    test_cls_path='./data/Industry/ServerMachineDataset/test_label/machine-1-1.csv',
+    min_points=5, scale_scores=True, class_weight = {0: 0.1, 1: 0.9},
+    ts_scaler=exp.get_targets_scaler(0),
+    save_path='./anom_scores.csv',
+    plot=True, start_plot_pos=15000, end_plot_pos=21000,
+    save_html_path='./pages/tmp_anomaly_detection.html'
+)
 # velc_model.fit_detector(
 #     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
 #     plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)
