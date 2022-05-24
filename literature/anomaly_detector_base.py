@@ -30,15 +30,19 @@ class AnomalyDetector(ModelWrapper):
         self.scores_scaler = MinMaxScaler()
 
     @abstractmethod
-    def anomaly_score(self, x, return_pred: bool = False) -> List[float]:
+    def anomaly_score(
+        self, x, scale: bool = True, return_pred: bool = False
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         pass
 
     def fit_detector(
         self,
         dataloader: MultiTimeSeriesDataloader,
         classes: np.ndarray = None,
-        load_path: Path = None,
-        save_path: Path = None,
+        load_scores_path: Path = None,
+        save_scores_path: Path = None,
+        load_preds_path: Path = None,
+        save_preds_path: Path = None,
         class_weight: Dict = {0: 0.75, 1: 0.25},
         plot: bool = False,
         start_plot_pos: int = None,
@@ -47,18 +51,24 @@ class AnomalyDetector(ModelWrapper):
         ts_scaler: TransformerMixin = None,
         save_html_path: Path = None
     ):
-        assert classes is not None or load_path is not None,\
+        assert classes is not None or load_scores_path is not None,\
             'Classes can not be None. Pass it or load from file.'
-        if load_path is not None:
-            scores, classes = self.load_anom_scores(load_path)
+        if load_scores_path is not None:
+            scores, classes = self.load_anom_scores(load_scores_path)
+            if load_preds_path is not None:
+                preds = pd.read_csv(load_preds_path)
         else:
             scores = self.score_dataset(
                 dataloader=dataloader, scale=False, return_pred=plot)
             if plot:
                 scores, preds = scores
-            if save_path is not None:
+                preds = self.preds_to_df(
+                    dataloader, preds.numpy(), return_quantiles=True)
+                if save_preds_path is not None:
+                    preds.to_csv(save_preds_path)
+            if save_scores_path is not None:
                 self.save_anom_scores(
-                    scores=scores, classes=classes, path=save_path)
+                    scores=scores, classes=classes, path=save_scores_path)
         pred_cls = self.fit_thresholder(
             scores=scores, classes=classes, scale_scores=scale_scores,
             class_weight=class_weight)
@@ -72,15 +82,12 @@ class AnomalyDetector(ModelWrapper):
 
     def plot_preds_and_anomalies(
         self,
-        dataloader: MultiTimeSeriesDataloader, preds: torch.Tensor,
+        dataloader: MultiTimeSeriesDataloader, preds: pd.DataFrame,
         classes: np.ndarray, pred_cls: np.ndarray,
         scaler: TransformerMixin = None,
         save_html_path: Path = None,
         start_pos=None, end_pos=None
     ):
-        preds = torch.cat(preds).numpy()
-        preds = self.preds_to_df(
-            dataloader, preds, return_quantiles=True)
 
         pred_anom_ids = np.argwhere(pred_cls == 1)
         pred_anom_ids = dataloader.dataset.\
@@ -312,6 +319,7 @@ class AnomalyDetector(ModelWrapper):
                 preds += [x_dash]
             scores_list += scores
         if return_pred:
+            preds = torch.cat(preds)
             return scores_list, preds
         return scores_list
 

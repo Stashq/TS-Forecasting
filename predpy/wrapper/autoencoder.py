@@ -6,14 +6,9 @@ it target value named "label". Compatibile with :py:mod:`dataset`.
 """
 import torch
 from torch import nn, optim
-from typing import Dict, List, Union, Tuple
-from sklearn.base import TransformerMixin
-from tqdm.auto import tqdm
-import pandas as pd
-import numpy as np
+from typing import Dict, List
 
 from .base import Reconstructor
-from predpy.dataset import MultiTimeSeriesDataloader
 
 
 class Autoencoder(Reconstructor):
@@ -44,6 +39,19 @@ class Autoencoder(Reconstructor):
             model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass, optimizer_kwargs=optimizer_kwargs)
         self.target_cols_ids = target_cols_ids
+
+    def get_loss(
+        self,
+        x: torch.Tensor,
+        x_hat: torch.Tensor
+    ):
+        loss = self.criterion(x, x_hat)
+        return loss
+
+    def predict(self, x):
+        with torch.no_grad():
+            x_hat = self.model(x)
+            return x_hat
 
     def step(self, batch):
         x, _ = self.get_Xy(batch)

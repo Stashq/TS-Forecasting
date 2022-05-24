@@ -31,7 +31,7 @@ def plot_exp_predictions(
     ).tolist()
     plot_predictions(
         predictions=exp.get_models_predictions(dataset_idx, models_ids),
-        true_vals=d_params.true_values, target=d_params.target,
+        true_vals=d_params.true_values,
         models_names=models_names, scaler=d_params.scaler,
         title=d_params.name_, are_ae=are_ae, file_path=file_path)
 
@@ -67,12 +67,16 @@ def plot_predictions(
     """
     fig = make_subplots(rows=true_vals.shape[1], cols=1)
 
+    if scaler is not None:
+        true_vals, predictions = _rescale_true_vals_and_preds(
+            scaler=scaler, true_vals=true_vals, are_ae=are_ae,
+            predictions_df=predictions)
     n_targets = true_vals.shape[1]
     for target_i in range(n_targets):
         target_col = str(true_vals.columns[target_i])
         scatter_data = preds_and_true_vals_to_scatter_data(
             true_vals=true_vals, predictions=predictions, target=target_col,
-            models_names=models_names, scaler=scaler, are_ae=are_ae)
+            models_names=models_names, are_ae=are_ae)
         for trace in scatter_data:
             fig.add_trace(
                 trace, row=target_i+1, col=1
@@ -98,8 +102,8 @@ def preds_and_true_vals_to_scatter_data(
     are_ae: List[bool] = None
 ) -> List[go.Scatter]:
     if scaler is not None:
-        _rescale_true_vals_and_preds(
-            scaler=scaler, true_vals=true_vals,
+        true_vals, predictions = _rescale_true_vals_and_preds(
+            scaler=scaler, true_vals=true_vals, are_ae=are_ae,
             predictions_df=predictions, target=target)
     if are_ae is None:
         are_ae = [False]*len(predictions)
@@ -125,14 +129,19 @@ def _rescale_true_vals_and_preds(
     scaler: TransformerMixin,
     true_vals: Union[pd.Series, pd.DataFrame],
     predictions_df: pd.DataFrame,
-    target: Union[str, List[str]]
+    are_ae: List[bool],
+    target: Union[str, List[str]] = None,
 ) -> Tuple[List[float], pd.DataFrame]:
     vals = _scale_inverse(
-        true_vals, scaler, target)
-    predictions = \
-        predictions_df["predictions"].apply(
-            lambda preds: _scale_inverse(
-                preds, scaler, target))
+        true_vals, scaler, target, is_ae=False)
+    if "predictions" in predictions_df.columns:
+        predictions = \
+            predictions_df["predictions"].apply(
+                lambda preds: _scale_inverse(
+                    preds, scaler, target, is_ae=are_ae[preds.name]))
+    else:
+        predictions = _scale_inverse(
+            predictions_df, scaler, target, is_ae=are_ae[0])
     return vals, predictions
 
 
@@ -455,8 +464,9 @@ def plot_preprocessed_dataset(
 def _scale_inverse(
     time_series: Union[pd.Series, pd.DataFrame],
     scaler: TransformerMixin,
-    target_name: Union[str, List[str]] = None
-) -> List[float]:
+    target_name: Union[str, List[str]] = None,
+    is_ae: bool = False
+):
     if target_name is not None and isinstance(time_series, pd.Series):
         cols_ids = _get_target_columns_ids(target_name, scaler)
         scaler_input = np.array(
@@ -475,10 +485,24 @@ def _scale_inverse(
                 scaler_input += [mocked_column]
         scaler_input = np.array(scaler_input).T
 
+        # if is_ae:
+        #     result = pd.DataFrame()
+        #     for quantile in ['q000', 'q025', 'q050', 'q075', 'q100']:
+        #         cols = [
+        #             col for col in time_series.columns if quantile in col]
+        #         result[cols] = scaler.inverse_transform(time_series[cols])
+        # else:
+        #     result = scaler.inverse_transform(time_series)
         result = scaler.inverse_transform(scaler_input)
         result = result.T[cols_ids]
     elif target_name is None and isinstance(time_series, pd.DataFrame):
-        result = scaler.inverse_transform(time_series)
+        result = pd.DataFrame(columns=time_series.columns)
+        if is_ae:
+            for quantile in ['q000', 'q025', 'q050', 'q075', 'q100']:
+                cols = [col for col in time_series.columns if quantile in col]
+                result[cols] = scaler.inverse_transform(time_series[cols])
+        else:
+            result[time_series.columns] = scaler.inverse_transform(time_series)
 
     return result
 

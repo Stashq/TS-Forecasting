@@ -47,9 +47,6 @@ class ModelWrapper(LightningModule, ABC):
         self.target_cols_ids = target_cols_ids
         self.params_to_train = params_to_train
 
-    def forward(self, x):
-        return self.model(x)
-
     @abstractmethod
     def get_loss(self, output, labels):
         pass
@@ -57,30 +54,6 @@ class ModelWrapper(LightningModule, ABC):
     @abstractmethod
     def step(self, batch):
         pass
-
-    def training_step(self, batch, batch_idx):
-        loss = self.step(batch)
-        self.log("train_loss", loss, prog_bar=True, logger=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self.step(batch)
-        self.log("val_loss", loss, prog_bar=True, logger=True)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        loss = self.step(batch)
-        self.log("test_loss", loss, prog_bar=True, logger=True)
-        return loss
-
-    def configure_optimizers(self):
-        if self.params_to_train is None:
-            opt = self.OptimizerClass(
-                self.parameters(), self.lr, **self.optimizer_kwargs)
-        else:
-            opt = self.OptimizerClass(
-                self.params_to_train, self.lr, **self.optimizer_kwargs)
-        return opt
 
     @abstractmethod
     def predict(self, x):
@@ -105,6 +78,33 @@ class ModelWrapper(LightningModule, ABC):
         preds: np.ndarray
     ) -> pd.DataFrame:
         pass
+
+    def forward(self, x):
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch)
+        self.log("train_loss", loss, prog_bar=True, logger=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch)
+        self.log("val_loss", loss, prog_bar=True, logger=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self.step(batch)
+        self.log("test_loss", loss, prog_bar=True, logger=True)
+        return loss
+
+    def configure_optimizers(self):
+        if self.params_to_train is None:
+            opt = self.OptimizerClass(
+                self.parameters(), self.lr, **self.optimizer_kwargs)
+        else:
+            opt = self.OptimizerClass(
+                self.params_to_train, self.lr, **self.optimizer_kwargs)
+        return opt
 
 
 class Predictor(ModelWrapper):

@@ -25,6 +25,7 @@ class ATWrapper(Reconstructor):
             target_cols_ids=target_cols_ids,
             params_to_train=params_to_train
         )
+        self.mse = nn.MSELoss()
 
     @property
     def automatic_optimization(self) -> bool:
@@ -58,6 +59,12 @@ class ATWrapper(Reconstructor):
         max_loss = self.max_loss(x, x_hat, P, S)
         return min_loss, max_loss
 
+    def val_step(self, batch):
+        x, _ = self.get_Xy(batch)
+        x_hat, _, _ = self.model(x)
+        loss = self.mse(x, x_hat)
+        return loss
+
     def training_step(self, batch, batch_idx):
         opt = self.configure_optimizers()
         opt.zero_grad()
@@ -74,16 +81,14 @@ class ATWrapper(Reconstructor):
         opt.step()
 
     def validation_step(self, batch, batch_idx):
-        min_loss, max_loss = self.step(batch)
-        self.log("val_min_loss", min_loss, prog_bar=True, logger=True)
-        self.log("val_max_loss", max_loss, prog_bar=True, logger=True)
-        return min_loss + max_loss
+        loss = self.val_step(batch)
+        self.log("val_loss", loss, prog_bar=True, logger=True)
+        return loss
 
     def test_step(self, batch, batch_idx):
-        min_loss, max_loss = self.step(batch)
-        self.log("test_min_loss", min_loss, prog_bar=True, logger=True)
-        self.log("test_max_loss", max_loss, prog_bar=True, logger=True)
-        return min_loss + max_loss
+        loss = self.val_step(batch)
+        self.log("test_loss", loss, prog_bar=True, logger=True)
+        return loss
 
     def predict(self, x):
         with torch.no_grad():

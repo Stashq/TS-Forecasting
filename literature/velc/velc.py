@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models import Encoder, Decoder
+from models import LSTMEncoder, LSTMDecoder
 
 
 class ConstraintNet(nn.Module):
     def __init__(
-        self, c_in: int, window_size: int, z_size: int, 
+        self, c_in: int, window_size: int, z_size: int,
         N: int, threshold: float
     ):
         super(ConstraintNet, self).__init__()
@@ -56,7 +56,7 @@ class VELC(nn.Module):
     ):
         super(VELC, self).__init__()
 
-        self.encoder = Encoder(
+        self.encoder = LSTMEncoder(
             x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.z_mu_dense = nn.Linear(z_size, z_size)
         self.z_log_sig_dense = nn.Linear(z_size, z_size)
@@ -64,10 +64,10 @@ class VELC(nn.Module):
             c_in=c_in, window_size=window_size, z_size=z_size,
             N=N_constraint, threshold=threshold)
 
-        self.decoder = Decoder(
+        self.decoder = LSTMDecoder(
             z_size=z_size, h_size=h_size, x_size=c_in, n_layers=n_layers)
 
-        self.re_encoder = Encoder(
+        self.re_encoder = LSTMEncoder(
             x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.re_z_mu_dense = nn.Linear(z_size, z_size)
         self.re_z_log_sig_dense = nn.Linear(z_size, z_size)

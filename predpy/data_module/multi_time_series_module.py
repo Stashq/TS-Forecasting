@@ -34,7 +34,8 @@ class MultiTimeSeriesModule(LightningDataModule):
         split_proportions: Union[Tuple[float], List[float]],
         window_size: int,
         batch_size: int = 8,
-        overlapping: bool = False
+        overlapping: bool = False,
+        shuffle_train: bool = True,
     ):
         """Creates MultiTimeSeriesModule instance.
 
@@ -73,6 +74,7 @@ class MultiTimeSeriesModule(LightningDataModule):
         self.window_size = window_size
         self.batch_size = batch_size
         self.overlapping = overlapping
+        self.shuffle_train = shuffle_train
 
         # setting proportions
         self._proportions_assert(split_proportions)
@@ -366,7 +368,7 @@ class MultiTimeSeriesModule(LightningDataModule):
             window_size=self.window_size,
             target=self.target,
             batch_size=self.batch_size,
-            shuffle=False,
+            shuffle=self.shuffle_train,
             num_workers=8
         )
 

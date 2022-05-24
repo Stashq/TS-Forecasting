@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models import Encoder, Decoder
+from models import LSTMEncoder, LSTMDecoder
 
 
 class CriticX(nn.Module):
@@ -40,9 +40,9 @@ class TADGAN(nn.Module):
     ):
         self.z_size = z_size
         super(TADGAN, self).__init__()
-        self.encoder = Encoder(
+        self.encoder = LSTMEncoder(
             x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
-        self.decoder = Decoder(
+        self.decoder = LSTMDecoder(
             z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
         self.critic_x = CriticX(x_size=c_in, h_size=20)
         self.critic_z = CriticZ(z_size=z_size, h_size=10)

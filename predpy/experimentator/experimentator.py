@@ -187,7 +187,7 @@ class Experimentator:
             target=ds_params.target,
             split_proportions=ds_params.split_proportions,
             window_size=int(ds_params.window_size),
-            batch_size=int(ds_params.batch_size)
+            batch_size=int(ds_params.batch_size),
         )
         if setup:
             tsm.setup()
@@ -258,18 +258,18 @@ class Experimentator:
     ):
         pl_model = self.create_lightning_module(
             model_params=self.models_params.iloc[model_idx])
+        epoch = 0
 
-        if file_name is None:
-            file_name = self.exp_date
-        elif file_name[-5:] == ".ckpt":
-            file_name = file_name[:-5]
-        if dir_path is None:
-            dir_path = self.datasets_params["path"]
-        if find_last:
-            file_name = self._find_last_model(dir_path, file_name)
-
-        epoch = None
         try:
+            if file_name is None:
+                file_name = self.exp_date
+            elif file_name[-5:] == ".ckpt":
+                file_name = file_name[:-5]
+            if dir_path is None:
+                dir_path = self.datasets_params["path"]
+            if find_last:
+                file_name = self._find_last_model(dir_path, file_name)
+
             loaded_data = torch.load(
                 os.path.join(dir_path, file_name + ".ckpt"))
             pl_model.load_state_dict(
@@ -339,7 +339,7 @@ class Experimentator:
             msg = dataset_setup_exception_msg.substitute(
                 dataset_idx=dataset_idx, dataset_name=ds_name)
         else:
-            m_name = self.models_params.iloc[dataset_idx]["name_"]
+            m_name = self.models_params.iloc[model_idx]["name_"]
             msg = training_exception_msg.substitute(
                 model_idx=model_idx, model_name=m_name,
                 dataset_idx=dataset_idx, dataset_name=ds_name)
@@ -365,7 +365,7 @@ class Experimentator:
         self,
         skip_steps: List[Tuple[int, int]] = [],
         experiments_path: str = None,
-        continue_run: bool = False,
+        continue_run: bool = True,
         safe: bool = True
     ) -> Experimentator:
         """Executes experiment.
@@ -393,7 +393,8 @@ class Experimentator:
             Executed experiment.
         """
 
-        if continue_run is False:
+        if continue_run is False or\
+                self.exp_date is None or self.last_step_end is None:
             self.last_step_end = (-1, -1)
             self.exp_date = time.strftime("%Y-%m-%d_%H:%M:%S")
             # save initial settings in file
@@ -541,9 +542,14 @@ class Experimentator:
             for params in self.loggers_params]
 
         # setting files paths and logger with model name
+        # additionaly create logging directory
         for log in loggers_params:
             log.name = m_params.name_
             log.version = self.exp_date
+            save_dir = os.path.join(log.save_dir, tsm.name_)
+            if not(os.path.exists(save_dir) and os.path.isdir(save_dir)):
+                os.mkdir(save_dir)
+            log.save_dir = save_dir
         checkpoint_params.dirpath =\
             os.path.join(chp_dirpath, tsm.name_, m_params.name_)
 
@@ -559,7 +565,7 @@ class Experimentator:
                 create_if_not_found=True,
                 get_epoch=True)
             trainer_params.max_epochs = trainer_params.max_epochs - epoch
-        else:
+        if pl_model is None:
             pl_model = m_params.WrapperCls(
                 model=m_params.cls_(**m_params.init_params),
                 **m_params.learning_params,

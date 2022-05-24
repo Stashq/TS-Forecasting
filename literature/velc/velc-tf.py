@@ -65,7 +65,7 @@ class Sampling(layers.Layer):
 # Encoder
 #################
 
-class Encoder(layers.Layer):
+class LSTMEncoder(layers.Layer):
     def __init__(self, time_step, x_dim, lstm_h_dim, z_dim, name='encoder', **kwargs):
         super(Encoder, self).__init__(name=name, **kwargs)
 
@@ -96,7 +96,7 @@ class Encoder(layers.Layer):
 # Decoder
 #################
 
-class Decoder(layers.Layer):
+class LSTMDecoder(layers.Layer):
     def __init__(self, time_step, x_dim, lstm_h_dim, z_dim, name='decoder', **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
 
@@ -172,12 +172,12 @@ class VELC(keras.Model):
     def __init__(self, time_step, x_dim, lstm_h_dim, z_dim,N_constraintNet, name='velc', **kwargs):
         super(VELC, self).__init__(name=name, **kwargs)
 
-        self.encoder = Encoder(time_step, x_dim, lstm_h_dim, z_dim, **kwargs)
-        self.decoder = Decoder(time_step, x_dim, lstm_h_dim, z_dim, **kwargs)
+        self.encoder = LSTMEncoder(time_step, x_dim, lstm_h_dim, z_dim, **kwargs)
+        self.decoder = LSTMDecoder(time_step, x_dim, lstm_h_dim, z_dim, **kwargs)
 
 
         self.constraint_net_1 = ConstraintNet(time_step,x_dim,z_dim,N_constraintNet,name="constNet1",**kwargs)
-        self.re_encoder = Encoder(time_step, x_dim, lstm_h_dim, z_dim,name="re_encoder",**kwargs)
+        self.re_encoder = LSTMEncoder(time_step, x_dim, lstm_h_dim, z_dim,name="re_encoder",**kwargs)
         self.constraint_net_2 = ConstraintNet(time_step,x_dim,z_dim,N_constraintNet,name="constNet2",**kwargs)
 
 
