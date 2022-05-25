@@ -1,13 +1,15 @@
 from torch import nn, optim
-from typing import Dict, Generator, List
+from typing import Dict, Generator, List, Union, Tuple
 import torch
 from torch.nn.parameter import Parameter
+import torch.nn.functional as F
 
 from .anom_trans import AnomalyTransformer
 from predpy.wrapper import Reconstructor
+from literature.anomaly_detector_base import AnomalyDetector
 
 
-class ATWrapper(Reconstructor):
+class ATWrapper(Reconstructor, AnomalyDetector):
     def __init__(
         self,
         model: AnomalyTransformer = nn.Module(),
@@ -18,8 +20,9 @@ class ATWrapper(Reconstructor):
         target_cols_ids: List[int] = None,
         params_to_train: Generator[Parameter, None, None] = None
     ):
-        super(ATWrapper, self).__init__(
-            model=model, lr=lr, criterion=criterion,
+        AnomalyDetector.__init__(self)
+        Reconstructor.__init__(
+            self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
             optimizer_kwargs=optimizer_kwargs,
             target_cols_ids=target_cols_ids,
@@ -39,7 +42,7 @@ class ATWrapper(Reconstructor):
         return frob_norm - (
             lambda_
             * torch.linalg.norm(
-                self.model.association_discrepancy(P_list, S_list, x),
+                self.model.association_discrepancy(P_list, S_list),
                 ord=1)
         )
 
@@ -83,17 +86,55 @@ class ATWrapper(Reconstructor):
         self.log("train_max_loss", max_loss, prog_bar=True, logger=True)
         opt.step()
 
-    # def validation_step(self, batch, batch_idx):
-    #     loss = self.val_step(batch)
-    #     self.log("val_loss", loss, prog_bar=True, logger=True)
-    #     return loss
-
-    # def test_step(self, batch, batch_idx):
-    #     loss = self.val_step(batch)
-    #     self.log("test_loss", loss, prog_bar=True, logger=True)
-    #     return loss
-
     def predict(self, x):
         with torch.no_grad():
             x_hat, _, _ = self.model(x)
             return x_hat
+
+    def anomaly_score(
+        self, x, scale: bool = True, return_pred: bool = False
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
+        x_hat, P_layers, S_layers = self.model(x)
+        ad = F.softmax(
+            -self.model.association_discrepancy(
+                P_layers, S_layers),
+            dim=0
+        )
+
+        assert ad.shape[0] == self.model.N
+
+        norm = torch.tensor(
+            [
+                torch.linalg.norm(x[i, :] - x_hat[i, :], ord=2)
+                for i in range(self.model.N)
+            ]
+        )
+
+        assert norm.shape[0] == self.model.N
+
+        score = torch.mul(ad, norm)
+
+        score = score.tolist()
+        if scale:
+            score = self.scores_scaler.transform(score).flatten().tolist()
+        if return_pred:
+            return score, x_hat
+        return score
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.val_step(batch)
+        self.log("val_loss", loss, prog_bar=True, logger=True)
+        with torch.no_grad():
+            min_loss, max_loss = self.step(batch)
+            self.log("val_min_loss", min_loss, prog_bar=True, logger=True)
+            self.log("val_max_loss", max_loss, prog_bar=True, logger=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self.val_step(batch)
+        self.log("test_loss", loss, prog_bar=True, logger=True)
+        with torch.no_grad():
+            min_loss, max_loss = self.step(batch)
+            self.log("test_min_loss", min_loss, prog_bar=True, logger=True)
+            self.log("test_max_loss", max_loss, prog_bar=True, logger=True)
+        return loss

@@ -10,20 +10,21 @@ from sklearn.base import TransformerMixin
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import MinMaxScaler
 import torch
+# from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from typing import Union, Tuple, Dict, List, Literal
 
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies
-from predpy.wrapper import ModelWrapper
+# from predpy.wrapper import ModelWrapper
 from predpy.wrapper import Reconstructor
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
 Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
 
 
-class AnomalyDetector(ModelWrapper):
+class AnomalyDetector:
     def __init__(
         self,
     ):

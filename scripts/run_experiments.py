@@ -48,8 +48,8 @@ from pathlib import Path
 window_size = 100
 batch_size = 64
 
-c_in = 1  # 38
-c_out = 1  # 38
+c_in = 38  # 1
+c_out = 38  # 1
 
 load_params = {
     "header": None, "names": [str(i) for i in range(c_in)]
@@ -61,11 +61,13 @@ preprocessing_pipeline = [
 ]
 detect_anomalies_pipeline = []
 
-dataset_name = "artificial_1"
+topic = "Industry"
+collection_name = "ServerMachineDataset"
+dataset_name = "machine-1-1"
 
 datasets_params = [
     DatasetParams(
-        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Handmade/train/%s.csv" % dataset_name,
+        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/%s/%s/train/%s.csv" % (topic, collection_name, dataset_name),
         load_params=load_params,
         target=[str(i) for i in range(c_in)],
         split_proportions=[0.8, 0.1, 0.1],
@@ -75,39 +77,6 @@ datasets_params = [
         preprocessing_pipeline=preprocessing_pipeline,
         detect_anomalies_pipeline=detect_anomalies_pipeline,
         scaler=StandardScaler()),
-    # DatasetParams(
-    #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/%s.csv" % dataset_name,
-    #     load_params=load_params,
-    #     target=[str(i) for i in range(38)],
-    #     split_proportions=[0.8, 0.1, 0.1],
-    #     window_size=window_size,
-    #     batch_size=batch_size,
-    #     drop_refill_pipeline=drop_refill_pipeline,
-    #     preprocessing_pipeline=preprocessing_pipeline,
-    #     detect_anomalies_pipeline=detect_anomalies_pipeline,
-    #     scaler=StandardScaler()),
-    # DatasetParams(
-    #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/machine-1-2.csv",
-    #     load_params=load_params,
-    #     target=[str(i) for i in range(38)],
-    #     split_proportions=[0.8, 0.1, 0.1],
-    #     window_size=window_size,
-    #     batch_size=batch_size,
-    #     drop_refill_pipeline=drop_refill_pipeline,
-    #     preprocessing_pipeline=preprocessing_pipeline,
-    #     detect_anomalies_pipeline=detect_anomalies_pipeline,
-    #     scaler=StandardScaler()),
-    # DatasetParams(
-    #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/machine-1-3.csv",
-    #     load_params=load_params,
-    #     target=[str(i) for i in range(38)],
-    #     split_proportions=[0.8, 0.1, 0.1],
-    #     window_size=window_size,
-    #     batch_size=batch_size,
-    #     drop_refill_pipeline=drop_refill_pipeline,
-    #     preprocessing_pipeline=preprocessing_pipeline,
-    #     detect_anomalies_pipeline=detect_anomalies_pipeline,
-    #     scaler=StandardScaler()),
 ]
 
 
@@ -202,7 +171,7 @@ models_params = [
     ModelParams(
         name_="AnomTrans_l2", cls_=AnomalyTransformer,
         init_params=dict(
-            window_size=window_size, c_in=c_in, d_model=100, n_layers=2, lambda_=0.5),
+            window_size=window_size, c_in=c_in, d_model=50, n_layers=2, lambda_=0.5),
         WrapperCls=ATWrapper),
     # ModelParams(
     #     name_="AnomTrans_l3", cls_=AnomalyTransformer,
@@ -222,12 +191,12 @@ models_params = [
 ]
 
 chp_p = CheckpointParams(
-    dirpath="./checkpoints", monitor='val_loss', verbose=True,
+    dirpath="./checkpoints", monitor='val_min_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=1, gpus=1, auto_lr_find=False)
+    max_epochs=30, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=4, min_delta=3e-4, verbose=True)
+    monitor='val_min_loss', patience=10, min_delta=3e-3, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -247,6 +216,7 @@ exp.run_experiments(
 # exp = load_experimentator('./saved_experiments/2022-05-24_19:33:35.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-25_13:10:17.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-25_14:13:25.pkl')
+# exp = load_experimentator('./saved_experiments/2022-05-25_18:16:30.pkl')
 plot_exp_predictions(
     exp, dataset_idx=0,
     # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
@@ -286,20 +256,20 @@ plot_exp_predictions(
 
 
 
-# model=exp.load_pl_model(0, './checkpoints/machine-1-1/ConvMVR')
-# model.fit_run_detection(
-#     window_size=window_size,
-#     test_path='./data/Industry/ServerMachineDataset/test/machine-1-1.csv',
-#     test_cls_path='./data/Industry/ServerMachineDataset/test_label/machine-1-1.csv',
-#     min_points=5, scale_scores=True, class_weight = {0: 0.1, 1: 0.9},
-#     ts_scaler=exp.get_targets_scaler(0),
-#     # load_scores_path = './anom_scores.csv',
-#     save_scores_path= './anom_scores.csv',
-#     # load_preds_path = './preds.csv',
-#     save_preds_path = './preds.csv',
-#     plot=True,# start_plot_pos=15000, end_plot_pos=21000,
-#     save_html_path='./pages/ConvMSR_detection.html'
-# )
+model=exp.load_pl_model(0, './checkpoints/machine-1-1/AnomTrans_l2')
+model.fit_run_detection(
+    window_size=window_size,
+    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+    test_cls_path='./data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name),
+    min_points=5, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
+    ts_scaler=exp.get_targets_scaler(0),
+    load_scores_path = './anom_scores.csv',
+    save_scores_path= './anom_scores.csv',
+    load_preds_path = './preds.csv',
+    save_preds_path = './preds.csv',
+    plot=True,# start_plot_pos=15000, end_plot_pos=21000,
+    save_html_path='./pages/AnomTrans.html'
+)
 
 
 # velc_model.fit_detector(

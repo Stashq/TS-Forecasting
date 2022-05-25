@@ -127,7 +127,7 @@ class AnomalyTransformer(nn.Module):
         x = self.decoding_layer(x)
         return x, P_layers, S_layers
 
-    def layer_association_discrepancy(self, Pl, Sl, x):
+    def layer_association_discrepancy(self, Pl, Sl):
         def rowwise_kl(row):
             return (
                 F.kl_div(Pl[row, :], Sl[row, :]) +
@@ -139,32 +139,11 @@ class AnomalyTransformer(nn.Module):
         )
         return ad_vector
 
-    def association_discrepancy(self, P_list, S_list, x):
+    def association_discrepancy(self, P_list, S_list):
 
         return (1 / len(P_list)) * sum(
             [
-                self.layer_association_discrepancy(P, S, x)
+                self.layer_association_discrepancy(P, S)
                 for P, S in zip(P_list, S_list)
             ]
         )
-
-    def anomaly_score(self, x, x_hat):
-        ad = F.softmax(
-            -self.association_discrepancy(self.P_layers, self.S_layers, x),
-            dim=0
-        )
-
-        assert ad.shape[0] == self.N
-
-        norm = torch.tensor(
-            [
-                torch.linalg.norm(x[i, :] - x_hat[i, :], ord=2)
-                for i in range(self.N)
-            ]
-        )
-
-        assert norm.shape[0] == self.N
-
-        score = torch.mul(ad, norm)
-
-        return score
