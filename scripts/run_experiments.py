@@ -48,8 +48,11 @@ from pathlib import Path
 window_size = 100
 batch_size = 64
 
+c_in = 1  # 38
+c_out = 1  # 38
+
 load_params = {
-    "header": None, "names": [str(i) for i in range(38)]
+    "header": None, "names": [str(i) for i in range(c_in)]
 }
 
 drop_refill_pipeline = []
@@ -58,13 +61,13 @@ preprocessing_pipeline = [
 ]
 detect_anomalies_pipeline = []
 
-dataset_name = "machine-1-1"
+dataset_name = "artificial_1"
 
 datasets_params = [
     DatasetParams(
-        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/%s.csv" % dataset_name,
+        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Handmade/train/%s.csv" % dataset_name,
         load_params=load_params,
-        target=[str(i) for i in range(38)],
+        target=[str(i) for i in range(c_in)],
         split_proportions=[0.8, 0.1, 0.1],
         window_size=window_size,
         batch_size=batch_size,
@@ -72,6 +75,17 @@ datasets_params = [
         preprocessing_pipeline=preprocessing_pipeline,
         detect_anomalies_pipeline=detect_anomalies_pipeline,
         scaler=StandardScaler()),
+    # DatasetParams(
+    #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/%s.csv" % dataset_name,
+    #     load_params=load_params,
+    #     target=[str(i) for i in range(38)],
+    #     split_proportions=[0.8, 0.1, 0.1],
+    #     window_size=window_size,
+    #     batch_size=batch_size,
+    #     drop_refill_pipeline=drop_refill_pipeline,
+    #     preprocessing_pipeline=preprocessing_pipeline,
+    #     detect_anomalies_pipeline=detect_anomalies_pipeline,
+    #     scaler=StandardScaler()),
     # DatasetParams(
     #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/Industry/ServerMachineDataset/train/machine-1-2.csv",
     #     load_params=load_params,
@@ -96,22 +110,31 @@ datasets_params = [
     #     scaler=StandardScaler()),
 ]
 
-c_in = 38
-c_out = 38
-
 
 models_params = [
+    # ModelParams(
+    #     name_="ConvMVR", cls_=ConvMVR,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, n_kernels=10,
+    #         kernel_size=3, emb_size=50, z_glob_size=0),
+    #     WrapperCls=MVRWrapper
+    # ),
     ModelParams(
-        name_="ConvMVR", cls_=ConvMVR,
+        name_="LSTMMVR_h200_z_100", cls_=LSTMMVR,
         init_params=dict(
-            window_size=window_size, c_in=c_in, n_kernels=10,
-            kernel_size=3, emb_size=50, z_glob_size=0),
+            c_in=c_in, h_size=200, z_size=100, n_layers=2, z_glob_size=0),
         WrapperCls=MVRWrapper
     ),
     # ModelParams(
-    #     name_="LSTMMVR", cls_=LSTMMVR,
+    #     name_="LSTMMVR_h400_z_200", cls_=LSTMMVR,
     #     init_params=dict(
-    #         c_in=c_in, h_size=100, z_size=50, z_glob_size=0),
+    #         c_in=c_in, h_size=400, z_size=200, z_glob_size=0),
+    #     WrapperCls=MVRWrapper
+    # ),
+    # ModelParams(
+    #     name_="LSTMMVR_h600_z_300", cls_=LSTMMVR,
+    #     init_params=dict(
+    #         c_in=c_in, h_size=600, z_size=300, z_glob_size=0),
     #     WrapperCls=MVRWrapper
     # ),
     # ModelParams(
@@ -202,9 +225,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=50, gpus=1, auto_lr_find=False)
+    max_epochs=20, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=4, min_delta=3e-3, verbose=True)
+    monitor='val_loss', patience=4, min_delta=3e-4, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -216,11 +239,18 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-# exp.run_experiments(
-#     experiments_path="./saved_experiments",
-#     safe=False
-# )
-exp = load_experimentator('./saved_experiments/2022-05-24_19:33:35.pkl')
+exp.run_experiments(
+    experiments_path="./saved_experiments",
+    safe=False
+)
+# exp = load_experimentator('./saved_experiments/2022-05-23_01:20:39.pkl')
+# exp = load_experimentator('./saved_experiments/2022-05-24_19:33:35.pkl')
+# exp = load_experimentator('./saved_experiments/2022-05-25_13:10:17.pkl')
+# exp = load_experimentator('./saved_experiments/2022-05-25_14:13:25.pkl')
+plot_exp_predictions(
+    exp, dataset_idx=0,
+    # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
+)
 
 # exp = load_experimentator(
 #     "./saved_experiments/2022-05-23_01:20:39.pkl"
@@ -254,64 +284,11 @@ exp = load_experimentator('./saved_experiments/2022-05-24_19:33:35.pkl')
 # plot_anomalies(ts, preds, [(23500, 24000)], [(24500, 25500)], None, True)
 
 
-def fit_run_detection(
-    model: AnomalyDetector, test_path, test_cls_path, min_points: int,
-    plot: bool, scale_scores: bool, save_html_path=None,
-    class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
-    load_scores_path: Path = None,
-    save_scores_path: Path = None,
-    load_preds_path: Path = None,
-    save_preds_path: Path = None,
-    ts_scaler: TransformerMixin = None,
-    start_plot_pos: int = None,
-    end_plot_pos: int = None
-):
-    """test_path file should contain columns of features without header in first line,
-    test_cls file has to be csv with one column filled with values 0 (normal data) 1 (anomaly),
-    min_points is minimal points required in record sequence to be anomaly,
-    scale_scores should be True only if model requires scaling anomaly scores"""
-    df = pd.read_csv(
-        test_path, names=list(range(38)), header=None
-    )
-    dataset = MultiTimeSeriesDataset(
-        sequences=[df],
-        window_size=window_size,
-        target=df.columns.tolist()
-    )
-    if load_scores_path is None:
-        data_classes = pd.read_csv(
-            test_cls_path, header=None)\
-            .iloc[:, 0].to_list()
-        rec_classes = dataset.get_recs_cls_by_data_cls(
-            data_classes, min_points=min_points)
-    else:
-        rec_classes = []
-
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=8
-    )
-
-    model.fit_detector(
-        dataloader=dataloader,
-        classes=np.array(rec_classes),
-        plot=plot, scale_scores=scale_scores,
-        save_html_path=save_html_path,
-        class_weight=class_weight,
-        load_scores_path=load_scores_path,
-        save_scores_path=save_scores_path,
-        load_preds_path=load_preds_path,
-        save_preds_path=save_preds_path,
-        ts_scaler=ts_scaler,
-        start_plot_pos=start_plot_pos,
-        end_plot_pos=end_plot_pos
-    )
 
 
-# fit_run_detection(
-#     model=exp.load_pl_model(0, './checkpoints/machine-1-1/ConvMVR'),
+# model=exp.load_pl_model(0, './checkpoints/machine-1-1/ConvMVR')
+# model.fit_run_detection(
+#     window_size=window_size,
 #     test_path='./data/Industry/ServerMachineDataset/test/machine-1-1.csv',
 #     test_cls_path='./data/Industry/ServerMachineDataset/test_label/machine-1-1.csv',
 #     min_points=5, scale_scores=True, class_weight = {0: 0.1, 1: 0.9},
@@ -325,26 +302,6 @@ def fit_run_detection(
 # )
 
 
-def create_dataset(
-    len_: int, lambdas: List[float], amplitudes: List[float], shift: float, noise_sig: float
-):
-    assert len(lambdas) == len(amplitudes), '"lambdas" and "amplitudes" have to have same lenght.'
-    t = np.arange(len_)
-    y = np.full(len_, shift)
-    for lam, amp in zip(lambdas, amplitudes):
-        wave = amp * np.sin(lam * t)
-        y = y + wave
-    y = y + noise_sig * np.random.randn(len_)
-    return y
-
-len_ = 1000
-y = create_dataset(len_=len_, lambdas=[2, 0.1], amplitudes=[2, 100], shift=300, noise_sig=0.7)
-
-import matplotlib.pyplot as plt
-fig = plt.figure()
-ax = fig.add_subplot(111)
-ax.plot(np.arange(len_), y)
-fig.show()
 # velc_model.fit_detector(
 #     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
 #     plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)

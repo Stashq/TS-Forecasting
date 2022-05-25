@@ -26,8 +26,7 @@ class LSTMEncoder(nn.Module):
     def forward(self, x):
         _, (h_n, _) = self.lstm(x)
         emb = F.relu(h_n[-1])
-        emb = self.linear(emb)
-        emb = F.relu(emb)
+        emb = F.relu(self.linear(emb))
         return emb
 
 
@@ -55,6 +54,7 @@ class LSTMDecoder(nn.Module):
         z = z.unsqueeze(1)
         z = z.repeat(1, seq_len, 1)
         emb, (_, _) = self.lstm(z)
+        emb = torch.flip(emb, dims=[1])
         emb = F.relu(emb)
         x_hat = self.linear(emb)
         return x_hat

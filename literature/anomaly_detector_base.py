@@ -10,10 +10,11 @@ from sklearn.base import TransformerMixin
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import MinMaxScaler
 import torch
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from typing import Union, Tuple, Dict, List
+from typing import Union, Tuple, Dict, List, Literal
 
-from predpy.dataset import MultiTimeSeriesDataloader
+from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies
 from predpy.wrapper import ModelWrapper
 from predpy.wrapper import Reconstructor
@@ -34,6 +35,65 @@ class AnomalyDetector(ModelWrapper):
         self, x, scale: bool = True, return_pred: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         pass
+
+    def fit_run_detection(
+        self, test_path: Path, test_cls_path: Path,
+        window_size: int, min_points: int, plot: bool, scale_scores: bool,
+        batch_size: int = 64, save_html_path=None,
+        class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
+        load_scores_path: Path = None,
+        save_scores_path: Path = None,
+        load_preds_path: Path = None,
+        save_preds_path: Path = None,
+        ts_scaler: TransformerMixin = None,
+        start_plot_pos: int = None,
+        end_plot_pos: int = None
+    ):
+        """test_path file should contain columns of features
+        without header in first line,
+        test_cls file has to be csv with one column filled
+        with values 0 (normal data) 1 (anomaly),
+        min_points is minimal points required in record sequence to be anomaly,
+        scale_scores should be True only if model requires
+        scaling anomaly scores"""
+        df = pd.read_csv(
+            test_path, names=list(range(38)), header=None
+        )
+        dataset = MultiTimeSeriesDataset(
+            sequences=[df],
+            window_size=window_size,
+            target=df.columns.tolist()
+        )
+        if load_scores_path is None:
+            data_classes = pd.read_csv(
+                test_cls_path, header=None)\
+                .iloc[:, 0].to_list()
+            rec_classes = dataset.get_recs_cls_by_data_cls(
+                data_classes, min_points=min_points)
+        else:
+            rec_classes = []
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=8
+        )
+
+        self.fit_detector(
+            dataloader=dataloader,
+            classes=np.array(rec_classes),
+            plot=plot, scale_scores=scale_scores,
+            save_html_path=save_html_path,
+            class_weight=class_weight,
+            load_scores_path=load_scores_path,
+            save_scores_path=save_scores_path,
+            load_preds_path=load_preds_path,
+            save_preds_path=save_preds_path,
+            ts_scaler=ts_scaler,
+            start_plot_pos=start_plot_pos,
+            end_plot_pos=end_plot_pos
+        )
 
     def fit_detector(
         self,

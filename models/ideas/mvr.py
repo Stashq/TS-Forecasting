@@ -12,14 +12,19 @@ from literature.anomaly_detector_base import AnomalyDetector
 
 class LSTMMVR(nn.Module):
     """LSTM Multivariate reconstructor"""
-    def __init__(self, c_in: int, h_size: int, z_size: int, z_glob_size: int):
+    def __init__(
+        self, c_in: int, h_size: int, z_size: int,
+        n_layers: int = 1, z_glob_size: int = 0
+    ):
         super(LSTMMVR, self).__init__()
         self.encoders = nn.ModuleList([
-            LSTMEncoder(x_size=1, h_size=h_size, n_layers=1, emb_size=z_size)
+            LSTMEncoder(
+                x_size=1, h_size=h_size, n_layers=n_layers, emb_size=z_size)
             for _ in range(c_in)
         ])
         self.decoders = nn.ModuleList([
-            LSTMDecoder(z_size=z_size, h_size=h_size, n_layers=1, x_size=1)
+            LSTMDecoder(
+                z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=1)
             for _ in range(c_in)
         ])
         self.c_in = c_in

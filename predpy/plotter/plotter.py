@@ -1,3 +1,4 @@
+import os
 from typing import List, Tuple, Union
 import pandas as pd
 import plotly.graph_objs as go
@@ -85,9 +86,13 @@ def plot_predictions(
         fig.update_yaxes(title_text=target_col, row=target_i+1, col=1)
 
     fig.update_layout(height=800 * n_targets, title_text=title)
-    if file_path is not None:
+
+    if file_path is not None and not os.path.exists(file_path):
+        print('Path %s not found. Showing fig in webbrowser.' % str(file_path))
+        fig.show()
+    elif file_path is not None:
         plot(fig, filename=file_path)
-    elif not prevent_plot:
+    if not prevent_plot:
         fig.show()
     return fig
 
@@ -135,10 +140,14 @@ def _rescale_true_vals_and_preds(
     vals = _scale_inverse(
         true_vals, scaler, target, is_ae=False)
     if "predictions" in predictions_df.columns:
-        predictions = \
-            predictions_df["predictions"].apply(
-                lambda preds: _scale_inverse(
-                    preds, scaler, target, is_ae=are_ae[preds.name]))
+        scaled_preds = []
+        for i in range(predictions_df.shape[0]):
+            preds = predictions_df.iloc[i]['predictions']
+            scaled_preds +=\
+                [_scale_inverse(
+                    preds, scaler, target, is_ae=are_ae[i])]
+        predictions = predictions_df[['dataset_id', 'model_id']]
+        predictions['predictions'] = scaled_preds
     else:
         predictions = _scale_inverse(
             predictions_df, scaler, target, is_ae=are_ae[0])
@@ -496,6 +505,7 @@ def _scale_inverse(
         result = scaler.inverse_transform(scaler_input)
         result = result.T[cols_ids]
     elif target_name is None and isinstance(time_series, pd.DataFrame):
+        ids = time_series.index
         result = pd.DataFrame(columns=time_series.columns)
         if is_ae:
             for quantile in ['q000', 'q025', 'q050', 'q075', 'q100']:
@@ -503,6 +513,7 @@ def _scale_inverse(
                 result[cols] = scaler.inverse_transform(time_series[cols])
         else:
             result[time_series.columns] = scaler.inverse_transform(time_series)
+        result.set_index(ids, inplace=True)
 
     return result
 
