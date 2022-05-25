@@ -77,7 +77,7 @@ class ConvDecoder(nn.Module):
             out_features=window_size
         )
 
-    def forward(self, z):
+    def forward(self, z, *args, **kwargs):
         """z shape is <N, C, L>, where:
         - N is a batch size,
         - C is features,

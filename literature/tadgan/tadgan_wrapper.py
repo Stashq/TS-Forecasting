@@ -1,13 +1,14 @@
 from torch import nn, optim
-from typing import Dict, List, Tuple, Literal
+from typing import Dict, List, Tuple, Literal, Union
 import torch
 from torch.autograd import Variable
 
 from predpy.wrapper import Reconstructor
+from literature.anomaly_detector_base import AnomalyDetector
 from .tadgan import TADGAN
 
 
-class TADGANWrapper(Reconstructor):
+class TADGANWrapper(Reconstructor, AnomalyDetector):
     def __init__(
         self,
         model: TADGAN = nn.Module(),
@@ -19,8 +20,9 @@ class TADGANWrapper(Reconstructor):
         gen_dis_train_loops: Tuple[int] = (1, 3),
         warmup_epochs: int = 0
     ):
-        super(TADGANWrapper, self).__init__(
-            model=model, lr=lr, criterion=criterion,
+        AnomalyDetector.__init__(self)
+        Reconstructor.__init__(
+            self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
             optimizer_kwargs=optimizer_kwargs,
             target_cols_ids=target_cols_ids,
@@ -193,6 +195,22 @@ class TADGANWrapper(Reconstructor):
         for _ in range(self.dis_loops):
             self.substep(x, opt_cr_z, 'dis', 'z')
             self.substep(x, opt_cr_x, 'dis', 'x')
+
+    def anomaly_score(
+        self, x, scale: bool = True, return_pred: bool = False
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
+        with torch.no_grad():
+            x_hat = self.model(x)
+            loss_mse = self.mse(x, x_hat)
+            loss_x = self.model.critic_x(x_hat)
+            score = loss_mse + loss_x
+
+        score = score.tolist()
+        if scale:
+            score = self.scores_scaler.transform(score).flatten().tolist()
+        if return_pred:
+            return score, x_hat
+        return score
 
     # def validation_step(self, batch, batch_idx):
     #     x, _ = self.get_Xy(batch)

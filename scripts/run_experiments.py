@@ -196,7 +196,7 @@ chp_p = CheckpointParams(
 tr_p = TrainerParams(
     max_epochs=30, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_min_loss', patience=10, min_delta=3e-3, verbose=True)
+    monitor='val_min_loss', patience=4, min_delta=3e-3, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -254,8 +254,6 @@ plot_exp_predictions(
 # plot_anomalies(ts, preds, [(23500, 24000)], [(24500, 25500)], None, True)
 
 
-
-
 model=exp.load_pl_model(0, './checkpoints/machine-1-1/AnomTrans_l2')
 model.fit_run_detection(
     window_size=window_size,
@@ -267,7 +265,7 @@ model.fit_run_detection(
     save_scores_path= './anom_scores.csv',
     load_preds_path = './preds.csv',
     save_preds_path = './preds.csv',
-    plot=True,# start_plot_pos=15000, end_plot_pos=21000,
+    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
     save_html_path='./pages/AnomTrans.html'
 )
 
