@@ -85,7 +85,8 @@ class ModelWrapper(LightningModule, ABC):
     def forward(self, x):
         return self.model(x)
 
-    def val_step(self, x):
+    def val_step(self, batch):
+        x, _ = self.get_Xy(batch)
         x_hat = self.predict(x)
         loss = self.val_mse(x, x_hat)
         return loss

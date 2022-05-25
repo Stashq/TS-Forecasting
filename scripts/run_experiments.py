@@ -88,12 +88,12 @@ models_params = [
     #         kernel_size=3, emb_size=50, z_glob_size=0),
     #     WrapperCls=MVRWrapper
     # ),
-    # ModelParams(
-    #     name_="LSTMMVR_h200_z_100", cls_=LSTMMVR,
-    #     init_params=dict(
-    #         c_in=c_in, h_size=200, z_size=100, n_layers=2, z_glob_size=0),
-    #     WrapperCls=MVRWrapper
-    # ),
+    ModelParams(
+        name_="LSTMMVR_h200_z_100", cls_=LSTMMVR,
+        init_params=dict(
+            c_in=c_in, h_size=100, z_size=200, n_layers=1, z_glob_size=0),
+        WrapperCls=MVRWrapper
+    ),
     # ModelParams(
     #     name_="LSTMMVR_h400_z_200", cls_=LSTMMVR,
     #     init_params=dict(
@@ -168,11 +168,11 @@ models_params = [
     #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
     #         gen_dis_train_loops=(3, 1), warmup_epochs=5)
     # ),
-    ModelParams(
-        name_="AnomTrans_l2", cls_=AnomalyTransformer,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, d_model=50, n_layers=2, lambda_=0.5),
-        WrapperCls=ATWrapper),
+    # ModelParams(
+    #     name_="AnomTrans_l2", cls_=AnomalyTransformer,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, d_model=50, n_layers=2, lambda_=0.5),
+    #     WrapperCls=ATWrapper),
     # ModelParams(
     #     name_="AnomTrans_l3", cls_=AnomalyTransformer,
     #     init_params=dict(
@@ -194,9 +194,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_min_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=30, gpus=1, auto_lr_find=False)
+    max_epochs=60, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_min_loss', patience=4, min_delta=3e-3, verbose=True)
+    monitor='val_min_loss', patience=15, min_delta=3e-3, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
