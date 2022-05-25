@@ -31,6 +31,9 @@ class ATWrapper(Reconstructor):
     def automatic_optimization(self) -> bool:
         return False
 
+    def forward(self, x):
+        return self.model(x)
+
     def get_loss(self, x_hat, P_list, S_list, lambda_, x):
         frob_norm = torch.linalg.matrix_norm(x_hat - x, ord="fro")
         return frob_norm - (
@@ -80,17 +83,17 @@ class ATWrapper(Reconstructor):
         self.log("train_max_loss", max_loss, prog_bar=True, logger=True)
         opt.step()
 
-    def validation_step(self, batch, batch_idx):
-        loss = self.val_step(batch)
-        self.log("val_loss", loss, prog_bar=True, logger=True)
-        return loss
+    # def validation_step(self, batch, batch_idx):
+    #     loss = self.val_step(batch)
+    #     self.log("val_loss", loss, prog_bar=True, logger=True)
+    #     return loss
 
-    def test_step(self, batch, batch_idx):
-        loss = self.val_step(batch)
-        self.log("test_loss", loss, prog_bar=True, logger=True)
-        return loss
+    # def test_step(self, batch, batch_idx):
+    #     loss = self.val_step(batch)
+    #     self.log("test_loss", loss, prog_bar=True, logger=True)
+    #     return loss
 
     def predict(self, x):
         with torch.no_grad():
-            x_hat, _, _ = self(x)
+            x_hat, _, _ = self.model(x)
             return x_hat

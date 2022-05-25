@@ -46,6 +46,7 @@ class ModelWrapper(LightningModule, ABC):
         self.lr = lr
         self.target_cols_ids = target_cols_ids
         self.params_to_train = params_to_train
+        self.val_mse = nn.MSELoss()
 
     @abstractmethod
     def get_loss(self, output, labels):
@@ -82,18 +83,23 @@ class ModelWrapper(LightningModule, ABC):
     def forward(self, x):
         return self.model(x)
 
+    def val_step(self, x):
+        x_hat = self.predict(x)
+        loss = self.val_mse(x, x_hat)
+        return loss
+
     def training_step(self, batch, batch_idx):
         loss = self.step(batch)
         self.log("train_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self.step(batch)
+        loss = self.val_step(batch)
         self.log("val_loss", loss, prog_bar=True, logger=True)
         return loss
 
     def test_step(self, batch, batch_idx):
-        loss = self.step(batch)
+        loss = self.val_step(batch)
         self.log("test_loss", loss, prog_bar=True, logger=True)
         return loss
 
@@ -141,7 +147,6 @@ class Predictor(ModelWrapper):
 
     def step(self, batch):
         sequences, labels = self.get_Xy(batch)
-
         loss = self.get_loss(self(sequences), labels)
         return loss
 

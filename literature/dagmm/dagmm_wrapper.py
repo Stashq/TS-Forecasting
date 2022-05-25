@@ -30,6 +30,9 @@ class DAGMMWrapper(ModelWrapper):
         self.lambda_energy = lambda_energy
         self.lambda_cov_diag = lambda_cov_diag
 
+    def forward(self, x):
+        return self.model(x)
+
     def step(self, batch):
         x, _ = self.get_Xy(batch)
 
@@ -56,5 +59,5 @@ class DAGMMWrapper(ModelWrapper):
 
     def predict(self, x):
         with torch.no_grad():
-            x_hat, _, _, _ = self(x)
+            x_hat, _, _, _ = self.model(x)
             return x_hat

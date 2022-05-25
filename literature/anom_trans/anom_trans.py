@@ -54,7 +54,7 @@ class AnomalyAttention(nn.Module):
         )
         if next(self.parameters()).is_cuda:
             p = p.cuda()
-        gaussian = self.gaussian_kernel(p.float(), self.sigma)
+        gaussian = self.gaussian_kernel(p.float(), self.sigma + 1e-8)
         gaussian /= gaussian.sum(dim=-1).unsqueeze(dim=-1)
         # .view(gaussian.shape[0], gaussian.shape[1], 1)
 
@@ -88,22 +88,27 @@ class AnomalyTransformerBlock(nn.Module):
 
         z_identity = z
         z = self.ff(z)
-        z = self.ln2(z + z_identity)
+        x_next = self.ln2(z + z_identity)
 
-        return z, p, s
+        return x_next, p, s
 
 
 class AnomalyTransformer(nn.Module):
-    def __init__(self, N, d_model, layers, lambda_):
+    def __init__(
+        self, window_size: int, c_in: int, d_model: int,
+        n_layers: int, lambda_: float
+    ):
         super().__init__()
-        self.N = N
+        self.N = window_size
         self.d_model = d_model
+        self.lambda_ = lambda_
 
+        self.embedding_layer = nn.Linear(c_in, d_model)
         self.blocks = nn.ModuleList(
             [AnomalyTransformerBlock(self.N, self.d_model)
-             for _ in range(layers)]
+             for _ in range(n_layers)]
         )
-        self.lambda_ = lambda_
+        self.decoding_layer = nn.Linear(d_model, c_in)
 
         # self.P_layers = []
         # self.S_layers = []
@@ -111,6 +116,7 @@ class AnomalyTransformer(nn.Module):
     def forward(self, x):
         P_layers = []
         S_layers = []
+        x = self.embedding_layer(x)
         for idx, block in enumerate(self.blocks):
             x, p, s = block(x)
             # self.P_layers.append(block.attention.P)
@@ -118,6 +124,7 @@ class AnomalyTransformer(nn.Module):
             P_layers.append(p)
             S_layers.append(s)
 
+        x = self.decoding_layer(x)
         return x, P_layers, S_layers
 
     def layer_association_discrepancy(self, Pl, Sl, x):

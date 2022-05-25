@@ -36,6 +36,9 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
         self.alpha = alpha
         self.beta = beta
 
+    def forward(self, x):
+        return self.model(x)
+
     def get_loss(
         self, x, x_dash, z_dash, z_mu, z_log_sig,
         re_z_dash, re_z_mu, re_z_log_sig
@@ -56,7 +59,7 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
 
     def predict(self, x):
         with torch.no_grad():
-            x_dash, _, _, _, _, _, _ = self(x)
+            x_dash, _, _, _, _, _, _ = self.model(x)
             return x_dash
 
     def anomaly_score(

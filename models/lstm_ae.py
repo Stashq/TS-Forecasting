@@ -18,7 +18,11 @@ class LSTMEncoder(nn.Module):
             num_layers=n_layers,
             batch_first=True
         )
-        self.linear = nn.Linear(
+        self.linear1 = nn.Linear(
+            in_features=h_size,
+            out_features=h_size
+        )
+        self.linear2 = nn.Linear(
             in_features=h_size,
             out_features=emb_size
         )
@@ -26,7 +30,8 @@ class LSTMEncoder(nn.Module):
     def forward(self, x):
         _, (h_n, _) = self.lstm(x)
         emb = F.relu(h_n[-1])
-        emb = F.relu(self.linear(emb))
+        emb = F.relu(self.linear1(emb))
+        emb = F.relu(self.linear2(emb))
         return emb
 
 
@@ -45,7 +50,11 @@ class LSTMDecoder(nn.Module):
             num_layers=n_layers,
             batch_first=True
         )
-        self.linear = nn.Linear(
+        self.linear1 = nn.Linear(
+            in_features=h_size,
+            out_features=h_size
+        )
+        self.linear2 = nn.Linear(
             in_features=h_size,
             out_features=x_size
         )
@@ -56,7 +65,8 @@ class LSTMDecoder(nn.Module):
         emb, (_, _) = self.lstm(z)
         emb = torch.flip(emb, dims=[1])
         emb = F.relu(emb)
-        x_hat = self.linear(emb)
+        emb = F.relu(self.linear1(emb))
+        x_hat = self.linear2(emb)
         return x_hat
 
 

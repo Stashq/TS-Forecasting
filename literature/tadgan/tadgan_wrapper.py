@@ -34,20 +34,23 @@ class TADGANWrapper(Reconstructor):
     def automatic_optimization(self) -> bool:
         return False
 
+    def forward(self, x):
+        return self.model(x)
+
     def get_loss(self):
         pass
 
     def step(self):
         pass
 
-    def get_mse_loss(self, x, z_enc=None):
-        if z_enc is not None:
-            seq_len = x.size(1)
-            x_hat = self.model.decoder(z_enc, seq_len=seq_len)
-        else:
-            x_hat = self.model(x)
-        loss_mse = self.mse(x, x_hat)
-        return loss_mse
+    # def get_mse_loss(self, x, z_enc=None):
+    #     if z_enc is not None:
+    #         seq_len = x.size(1)
+    #         x_hat = self.model.decoder(z_enc, seq_len=seq_len)
+    #     else:
+    #         x_hat = self.model(x)
+    #     loss_mse = self.mse(x, x_hat)
+    #     return loss_mse
 
     def get_gp_loss(self, a, a_gen, name: Literal['x', 'z']):
         if name == 'x':
@@ -191,14 +194,14 @@ class TADGANWrapper(Reconstructor):
             self.substep(x, opt_cr_z, 'dis', 'z')
             self.substep(x, opt_cr_x, 'dis', 'x')
 
-    def validation_step(self, batch, batch_idx):
-        x, _ = self.get_Xy(batch)
-        loss = self.get_mse_loss(x)
-        self.log("val_loss", loss, prog_bar=True, logger=True)
-        return loss
+    # def validation_step(self, batch, batch_idx):
+    #     x, _ = self.get_Xy(batch)
+    #     loss = self.get_mse_loss(x)
+    #     self.log("val_loss", loss, prog_bar=True, logger=True)
+    #     return loss
 
-    def test_step(self, batch, batch_idx):
-        x, _ = self.get_Xy(batch)
-        loss = self.get_mse_loss(x)
-        self.log("test_loss", loss, prog_bar=True, logger=True)
-        return loss
+    # def test_step(self, batch, batch_idx):
+    #     x, _ = self.get_Xy(batch)
+    #     loss = self.get_mse_loss(x)
+    #     self.log("test_loss", loss, prog_bar=True, logger=True)
+    #     return loss
