@@ -688,3 +688,28 @@ def load_experimentator(path: str) -> Experimentator:
         exp.predictions = attrs["predictions"]
         exp.exp_date = attrs["exp_date"]
         return exp
+
+
+def load_last_experimentator(dir_path: str) -> Experimentator:
+    """Loads experimentator from last changed file in directory.
+
+    Parameters
+    ----------
+    dir_path : str
+        Path to file.
+
+    Returns
+    -------
+    Experimentator
+        Loaded experimentator instance.
+    """
+    modify_time = 0
+    file_name = None
+    for f_name in os.listdir(dir_path):
+        mt = os.path.getmtime(
+            os.path.join(dir_path, f_name))
+        if modify_time < mt:
+            modify_time = mt
+            file_name = f_name
+    exp = load_experimentator(os.path.join(dir_path, file_name))
+    return exp

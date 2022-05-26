@@ -12,6 +12,7 @@ from predpy.data_module import MultiTimeSeriesModule
 from .experimentator_plot import ExperimentatorPlot
 from predpy.wrapper import Reconstructor
 
+
 PREDICTED_ANOMALIES_COLOR = '#9467bd'
 TRUE_ANOMALIES_COLOR = '#d62728'
 
@@ -87,10 +88,8 @@ def plot_predictions(
 
     fig.update_layout(height=800 * n_targets, title_text=title)
 
-    if file_path is not None and not os.path.exists(file_path):
-        print('Path %s not found. Showing fig in webbrowser.' % str(file_path))
-        fig.show()
-    elif file_path is not None:
+    if file_path is not None:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plot(fig, filename=file_path)
     if not prevent_plot:
         fig.show()
@@ -465,6 +464,7 @@ def plot_preprocessed_dataset(
         annotation_text="test")
 
     if file_path is not None:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plot(fig, filename=file_path)
     else:
         fig.show()
@@ -617,6 +617,7 @@ def plot_aggregated_predictions(
 
     fig = go.Figure(data=data, layout=layout)
     if file_path is not None:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plot(fig, filename=file_path)
     else:
         fig.show()
@@ -710,6 +711,7 @@ def plot_anomalies(
             opacity=0.3, layer="below", line_width=1
         )
     if file_path is not None:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plot(fig, filename=file_path)
     fig.show()
 
@@ -788,6 +790,7 @@ def plot_3d_embeddings(
 
     fig = go.Figure(data=data, layout=layout)
     if file_path is not None:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plot(fig, filename=file_path)
     else:
         fig.show()

@@ -6,35 +6,42 @@ from models import LSTMEncoder, LSTMDecoder
 
 class CriticX(nn.Module):
     def __init__(
-        self, x_size: int, h_size: int
+        self, window_size: int, x_size: int, h_size: int
     ):
         super(CriticX, self).__init__()
-        self.dense1 = nn.Linear(in_features=x_size, out_features=h_size)
+        self.x_size = x_size
+        self.window_size = window_size
+        self.dense1 = nn.Linear(
+            in_features=x_size * window_size, out_features=h_size)
         self.dense2 = nn.Linear(in_features=h_size, out_features=1)
 
     def forward(self, x):
-        x = self.dense1(x)
-        x = F.relu(x)
+        x = x.view(-1, self.x_size * self.window_size)
+        x = F.relu(self.dense1(x))
         x = self.dense2(x)
-        return (x)
+        return x
 
 
 class CriticZ(nn.Module):
-    def __init__(self, z_size: int, h_size: int = 10):
+    def __init__(self, window_size: int, z_size: int, h_size: int = 10):
         super(CriticZ, self).__init__()
-        self.dense1 = nn.Linear(in_features=z_size, out_features=h_size)
+        self.z_size = z_size
+        self.window_size = window_size
+        self.dense1 = nn.Linear(
+            in_features=z_size * window_size, out_features=h_size)
         self.dense2 = nn.Linear(in_features=h_size, out_features=1)
 
-    def forward(self, x):
-        x = self.dense1(x)
-        x = F.relu(x)
-        x = self.dense2(x)
-        return (x)
+    def forward(self, z):
+        z = z.view(-1, self.z_size * self.window_size)
+        z = F.relu(self.dense1(z))
+        z = self.dense2(z)
+        return z
 
 
 class TADGAN(nn.Module):
     def __init__(
-        self, c_in: int, h_size: int,  n_layers: int, z_size: int,
+        self, window_size: int, c_in: int,
+        h_size: int,  n_layers: int, z_size: int,
         pretrained_encoder: nn.Module = None,
         pretrained_decoder: nn.Module = None
     ):
@@ -44,8 +51,10 @@ class TADGAN(nn.Module):
             x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.decoder = LSTMDecoder(
             z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
-        self.critic_x = CriticX(x_size=c_in, h_size=20)
-        self.critic_z = CriticZ(z_size=z_size, h_size=10)
+        self.critic_x = CriticX(
+            window_size=window_size, x_size=c_in, h_size=20)
+        self.critic_z = CriticZ(
+            window_size=window_size, z_size=z_size, h_size=10)
 
         if pretrained_encoder is not None:
             self.encoder.load_state_dict(pretrained_encoder.state_dict())

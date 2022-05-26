@@ -18,7 +18,8 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
         gen_dis_train_loops: Tuple[int] = (1, 3),
-        warmup_epochs: int = 0
+        warmup_epochs: int = 0,
+        alpha: float = 0.5
     ):
         AnomalyDetector.__init__(self)
         Reconstructor.__init__(
@@ -115,7 +116,9 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         # Wasserstein Loss
         real_x_score = torch.mean(real_x)
 
-        z = torch.empty(batch_size, self.model.z_size)\
+        # z = torch.empty(batch_size, self.model.z_size)\
+        #     .uniform_(0, 1).to(self.device)
+        z = torch.empty(batch_size, seq_len, self.model.z_size)\
             .uniform_(0, 1).to(self.device)
         x_gen = self.model.decoder(z, seq_len=seq_len)
         fake_x = self.model.critic_x(x_gen)
@@ -135,13 +138,15 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         return loss
 
     def calculate_loss_z(self, x, model_part: Literal['gen', 'dis']):
-        batch_size = x.size(0)
+        batch_size, seq_len = x.shape[:2]
         z_enc = self.model.encoder(x)
         real_z = self.model.critic_z(z_enc)
         # Wasserstein Loss
         real_z_score = torch.mean(real_z)
 
-        z = torch.empty(batch_size, self.model.z_size)\
+        # z = torch.empty(batch_size, self.model.z_size)\
+        #     .uniform_(0, 1).to(self.device)
+        z = torch.empty(batch_size, seq_len, self.model.z_size)\
             .uniform_(0, 1).to(self.device)
         fake_z = self.model.critic_z(z)
         # Wasserstein Loss
@@ -199,11 +204,13 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
     def anomaly_score(
         self, x, scale: bool = True, return_pred: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
+        batch_size = x.size(0)
         with torch.no_grad():
             x_hat = self.model(x)
-            loss_mse = self.mse(x, x_hat)
+            loss_mse = torch.linalg.norm(
+                (x - x_hat).reshape(batch_size, -1), ord=1, dim=1)
             loss_x = self.model.critic_x(x_hat)
-            score = loss_mse + loss_x
+            score = self.alpha * loss_mse + (1 - self.alpha) * loss_x
 
         score = score.tolist()
         if scale:

@@ -20,6 +20,6 @@ callbacks,
 """
 # flake8:noqa
 from .experimentator import (
-    Experimentator, load_experimentator)
+    Experimentator, load_experimentator, load_last_experimentator)
 from .experimentator_params import (
     DatasetParams, ModelParams, PredictionRecord, LearningParams)

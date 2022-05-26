@@ -1,5 +1,6 @@
 # flake8: noqa
 
+import os
 import sys
 sys.path.append("/home/stachu/Projects/Anomaly_detection/Forecasting_models")
 
@@ -8,7 +9,7 @@ from predpy.data_module import MultiTimeSeriesModule
 from predpy.wrapper import Autoencoder, Predictor, VAE
 from predpy.experimentator import (
     DatasetParams, ModelParams,
-    Experimentator, load_experimentator)
+    Experimentator, load_experimentator, load_last_experimentator)
 from predpy.plotter import (
     plot_exp_predictions
 )
@@ -45,11 +46,20 @@ from pathlib import Path
 
 # =============================================================================
 
-window_size = 100
+window_size = 200
 batch_size = 64
 
-c_in = 38  # 1
-c_out = 38  # 1
+# c_in = 38
+# c_out = 38
+# topic = "Industry"
+# collection_name = "ServerMachineDataset"
+# dataset_name = "machine-1-1"
+
+c_in = 1
+c_out = 1
+topic = "Handmade"
+collection_name = "Sin"
+dataset_name = "artificial_1"
 
 load_params = {
     "header": None, "names": [str(i) for i in range(c_in)]
@@ -60,10 +70,6 @@ preprocessing_pipeline = [
     (use_dataframe_func, "astype", "float"),
 ]
 detect_anomalies_pipeline = []
-
-topic = "Industry"
-collection_name = "ServerMachineDataset"
-dataset_name = "machine-1-1"
 
 datasets_params = [
     DatasetParams(
@@ -80,7 +86,73 @@ datasets_params = [
 ]
 
 
+model_name = 'TadGAN_ws%d_h200_l2_z100_g1d1_warm5' % window_size
 models_params = [
+    ModelParams(
+        name_=model_name, cls_=TADGAN,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, h_size=100, n_layers=1, z_size=50),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(1, 1), warmup_epochs=0)
+    ),
+]
+
+
+chp_p = CheckpointParams(
+    dirpath="./checkpoints", monitor='val_loss', verbose=True,
+    save_top_k=1)
+tr_p = TrainerParams(
+    max_epochs=80, gpus=1, auto_lr_find=False)
+es_p = EarlyStoppingParams(
+    monitor='val_loss', patience=15, min_delta=1e-3, verbose=True)
+
+exp = Experimentator(
+    models_params=models_params,
+    datasets_params=datasets_params,
+    trainer_params=tr_p,
+    checkpoint_params=chp_p,
+    early_stopping_params=es_p,
+    LoggersClasses=[TensorBoardLogger],
+    loggers_params=[LoggerParams(save_dir="./lightning_logs")]
+)
+
+exp.run_experiments(
+    experiments_path="./saved_experiments",
+    safe=False
+)
+# exp = load_experimentator('./saved_experiments/2022-05-25_20:31:39.pkl')
+exp = load_last_experimentator('./saved_experiments')
+
+m_id, ds_id = 0, 0
+# plot_exp_predictions(
+#     exp, dataset_idx=ds_id,
+#     # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
+# )
+
+model = exp.load_pl_model(
+    m_id, os.path.join('checkpoints', dataset_name, model_name))
+model.fit_run_detection(
+    window_size=window_size,
+    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+    test_cls_path='./data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name),
+    min_points=3, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
+    ts_scaler=exp.get_targets_scaler(ds_id),
+    # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+    save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+    # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+    save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
+    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
+)
+
+
+
+
+
+
+
+
+# models_params = [
     # ModelParams(
     #     name_="ConvMVR", cls_=ConvMVR,
     #     init_params=dict(
@@ -88,12 +160,12 @@ models_params = [
     #         kernel_size=3, emb_size=50, z_glob_size=0),
     #     WrapperCls=MVRWrapper
     # ),
-    ModelParams(
-        name_="LSTMMVR_h200_z_100", cls_=LSTMMVR,
-        init_params=dict(
-            c_in=c_in, h_size=100, z_size=200, n_layers=1, z_glob_size=0),
-        WrapperCls=MVRWrapper
-    ),
+    # ModelParams(
+    #     name_="LSTMMVR_h100_z_100", cls_=LSTMMVR,
+    #     init_params=dict(
+    #         c_in=c_in, h_size=50, z_size=100, n_layers=1, z_glob_size=0),
+    #     WrapperCls=MVRWrapper
+    # ),
     # ModelParams(
     #     name_="LSTMMVR_h400_z_200", cls_=LSTMMVR,
     #     init_params=dict(
@@ -188,39 +260,19 @@ models_params = [
     #     init_params=dict(
     #         N=window_size, d_model=c_in, layers=3, lambda_=0.5),
     #     WrapperCls=ATWrapper),
-]
+# ]
 
-chp_p = CheckpointParams(
-    dirpath="./checkpoints", monitor='val_min_loss', verbose=True,
-    save_top_k=1)
-tr_p = TrainerParams(
-    max_epochs=60, gpus=1, auto_lr_find=False)
-es_p = EarlyStoppingParams(
-    monitor='val_min_loss', patience=15, min_delta=3e-3, verbose=True)
 
-exp = Experimentator(
-    models_params=models_params,
-    datasets_params=datasets_params,
-    trainer_params=tr_p,
-    checkpoint_params=chp_p,
-    early_stopping_params=es_p,
-    LoggersClasses=[TensorBoardLogger],
-    loggers_params=[LoggerParams(save_dir="./lightning_logs")]
-)
 
-exp.run_experiments(
-    experiments_path="./saved_experiments",
-    safe=False
-)
+
+
 # exp = load_experimentator('./saved_experiments/2022-05-23_01:20:39.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-24_19:33:35.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-25_13:10:17.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-25_14:13:25.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-25_18:16:30.pkl')
-plot_exp_predictions(
-    exp, dataset_idx=0,
-    # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
-)
+
+
 
 # exp = load_experimentator(
 #     "./saved_experiments/2022-05-23_01:20:39.pkl"
@@ -254,22 +306,49 @@ plot_exp_predictions(
 # plot_anomalies(ts, preds, [(23500, 24000)], [(24500, 25500)], None, True)
 
 
-model=exp.load_pl_model(0, './checkpoints/machine-1-1/AnomTrans_l2')
-model.fit_run_detection(
-    window_size=window_size,
-    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-    test_cls_path='./data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name),
-    min_points=5, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
-    ts_scaler=exp.get_targets_scaler(0),
-    load_scores_path = './anom_scores.csv',
-    save_scores_path= './anom_scores.csv',
-    load_preds_path = './preds.csv',
-    save_preds_path = './preds.csv',
-    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/AnomTrans.html'
-)
 
 
-# velc_model.fit_detector(
-#     tsm.val_dataloader(), tsm.test_dataloader(),  # load_path='./tmp.csv',
-#     plot=True, class_weight={0: 0.5, 1: 0.5}, scale_scores=True)
+
+# model_name = 'LSTMMVR_h100_z200_l1_zg0'
+# models_params = [
+#     ModelParams(
+#         name_=model_name, cls_=LSTMMVR,
+#         init_params=dict(
+#             c_in=c_in, h_size=100, z_size=200, n_layers=1, z_glob_size=0),
+#         WrapperCls=MVRWrapper
+#     ),
+# ]
+
+# model_name = 'ConvMVR_ws%d_nk10_ks3_es50_zg0' % window_size
+# models_params = [
+#     ModelParams(
+#         name_=model_name, cls_=ConvMVR,
+#         init_params=dict(
+#             window_size=window_size, c_in=c_in, n_kernels=10,
+#             kernel_size=3, emb_size=50, z_glob_size=0),
+#         WrapperCls=MVRWrapper
+#     ),
+# ]
+
+
+# model_name = 'TadGAN_h200_l2_z100_g1d1_warm5'
+# models_params = [
+#     ModelParams(
+#         name_=model_name, cls_=TADGAN,
+#         init_params=dict(
+#             c_in=c_in, h_size=200, n_layers=2, z_size=100),
+#         WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+#             gen_dis_train_loops=(1, 1), warmup_epochs=5)
+#     ),
+# ]
+
+
+# model_name = "LSTMMVR_h100_z100_l1_zg0"
+# models_params = [
+#     ModelParams(
+#         name_=model_name, cls_=LSTMMVR,
+#         init_params=dict(
+#             c_in=c_in, h_size=100, z_size=100, n_layers=1, z_glob_size=0),
+#         WrapperCls=MVRWrapper
+#     ),
+# ]

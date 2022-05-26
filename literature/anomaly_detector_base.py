@@ -3,6 +3,7 @@ import csv
 from datetime import timedelta
 import numpy as np
 import pandas as pd
+import os
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from string import Template
@@ -10,18 +11,36 @@ from sklearn.base import TransformerMixin
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import MinMaxScaler
 import torch
-# from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from typing import Union, Tuple, Dict, List, Literal
 
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies
-# from predpy.wrapper import ModelWrapper
 from predpy.wrapper import Reconstructor
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
 Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
+
+
+def get_dataset(
+    path: Path, window_size: int, ts_scaler: TransformerMixin = None
+) -> MultiTimeSeriesDataset:
+    df = pd.read_csv(
+        path, header=None
+    )
+    try:
+        df.columns = df.columns.astype(int)
+    except TypeError:
+        pass
+    if ts_scaler is not None:
+        df[:] = ts_scaler.transform(df)
+    dataset = MultiTimeSeriesDataset(
+        sequences=[df],
+        window_size=window_size,
+        target=df.columns.tolist()
+    )
+    return dataset
 
 
 class AnomalyDetector:
@@ -57,13 +76,13 @@ class AnomalyDetector:
         min_points is minimal points required in record sequence to be anomaly,
         scale_scores should be True only if model requires
         scaling anomaly scores"""
-        df = pd.read_csv(
-            test_path, names=list(range(38)), header=None
-        )
-        dataset = MultiTimeSeriesDataset(
-            sequences=[df],
-            window_size=window_size,
-            target=df.columns.tolist()
+        dataset = get_dataset(
+            path=test_path, window_size=window_size, ts_scaler=ts_scaler)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=8
         )
         if load_scores_path is None:
             data_classes = pd.read_csv(
@@ -73,13 +92,6 @@ class AnomalyDetector:
                 data_classes, min_points=min_points)
         else:
             rec_classes = []
-
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=8
-        )
 
         self.fit_detector(
             dataloader=dataloader,
@@ -126,8 +138,11 @@ class AnomalyDetector:
                 preds = self.preds_to_df(
                     dataloader, preds.numpy(), return_quantiles=True)
                 if save_preds_path is not None:
+                    os.makedirs(
+                        os.path.dirname(save_preds_path), exist_ok=True)
                     preds.to_csv(save_preds_path)
             if save_scores_path is not None:
+                os.makedirs(os.path.dirname(save_scores_path), exist_ok=True)
                 self.save_anom_scores(
                     scores=scores, classes=classes, path=save_scores_path)
         pred_cls = self.fit_thresholder(
