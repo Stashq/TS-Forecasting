@@ -196,7 +196,7 @@ rec_classes = dataset.get_recs_cls_by_data_cls(
     data_classes, min_points=min_points)
 n_models = exp.models_params.shape[0]
 
-for m_id in range(2, n_models):
+for m_id in range(3, n_models):
     model_name = exp.models_params.iloc[m_id]['name_']
     model = exp.load_pl_model(
         m_id, os.path.join('checkpoints', dataset_name, model_name))

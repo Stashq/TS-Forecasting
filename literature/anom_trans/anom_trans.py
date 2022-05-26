@@ -128,15 +128,20 @@ class AnomalyTransformer(nn.Module):
         return x, P_layers, S_layers
 
     def layer_association_discrepancy(self, Pl, Sl):
-        def rowwise_kl(row):
+        def rowwise_kl(row, Pl, Sl):
             return (
                 F.kl_div(Pl[row, :], Sl[row, :]) +
                 F.kl_div(Sl[row, :], Pl[row, :])
             )
 
+        batch_size, seq_len = Pl.shape[:2]
+        Pl = Pl.view(batch_size*seq_len, -1)
+        Sl = Sl.view(batch_size*seq_len, -1)
         ad_vector = torch.concat(
-            [rowwise_kl(row).unsqueeze(0) for row in range(Pl.shape[0])]
+            [rowwise_kl(row, Pl, Sl).unsqueeze(0)
+             for row in range(batch_size*seq_len)]
         )
+        ad_vector = ad_vector.view(batch_size, seq_len)
         return ad_vector
 
     def association_discrepancy(self, P_list, S_list):

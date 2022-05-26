@@ -99,28 +99,32 @@ class ATWrapper(Reconstructor, AnomalyDetector):
             ad = F.softmax(
                 -self.model.association_discrepancy(
                     P_layers, S_layers),
-                dim=0
+                dim=1
             )
 
-        assert ad.shape[0] == self.model.N
+        assert ad.shape[1] == self.model.N
 
-        norm = torch.tensor(
-            [
-                torch.linalg.norm(x[i, :] - x_hat[i, :], ord=2)
-                for i in range(self.model.N)
-            ]
-        )
+        norm = torch.linalg.norm((x - x_hat), ord=2, dim=2)
+        # norm = torch.tensor(
+        #     [
+        #         torch.linalg.norm(x[:, i, :] - x_hat[:, i, :], ord=2)
+        #         for i in range(self.model.N)
+        #     ]
+        # )
 
-        assert norm.shape[0] == self.model.N
+        assert norm.shape[1] == self.model.N
 
         score = torch.mul(ad, norm)
 
-        score = score.tolist()
+        max_score = torch.max(score, dim=1).values.tolist()
+        mean_score = torch.mean(score, dim=1).tolist()
+
+        res_score = [max_mean for max_mean in zip(max_score, mean_score)]
         if scale:
-            score = self.scores_scaler.transform(score).flatten().tolist()
+            res_score = self.scores_scaler.transform(res_score).tolist()
         if return_pred:
-            return score, x_hat
-        return score
+            return res_score, x_hat
+        return res_score
 
     def validation_step(self, batch, batch_idx):
         loss = self.val_step(batch)

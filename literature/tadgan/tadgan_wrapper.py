@@ -210,12 +210,14 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
             x_hat = self.model(x)
             loss_mse = torch.linalg.norm(
                 (x - x_hat).reshape(batch_size, -1), ord=1, dim=1)
-            loss_x = self.model.critic_x(x_hat)
-            score = self.alpha * loss_mse + (1 - self.alpha) * loss_x.squeeze()
+            loss_x = self.model.critic_x(x_hat).squeeze()
+            # score = self.alpha * loss_mse
+            # + (1 - self.alpha) * loss_x.squeeze()
 
-        score = score.tolist()
+        # score = score.tolist()
+        score = torch.stack([loss_mse, loss_x], dim=1).tolist()
         if scale:
-            score = self.scores_scaler.transform(score).flatten().tolist()
+            score = self.scores_scaler.transform(score).tolist()
         if return_pred:
             return score, x_hat
         return score

@@ -132,9 +132,9 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
             # mse not including batch
             score = torch.sum(
                 torch.sum(torch.square(x - x_hat), dim=-1), dim=-1)
-        score = score.tolist()
+        score = score.unsqueeze(1).tolist()
         if scale:
-            score = self.scores_scaler.transform(score).flatten().tolist()
+            score = self.scores_scaler.transform(score).tolist()
         if return_pred:
             return score, x_hat
         return score

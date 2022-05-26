@@ -148,8 +148,8 @@ class AnomalyDetector:
                 self.save_anom_scores(
                     scores=scores, classes=classes, path=save_scores_path)
         pred_cls = self.fit_thresholder(
-            scores=scores, classes=classes, scale_scores=scale_scores,
-            class_weight=class_weight)
+            scores=np.array(scores), classes=np.array(classes),
+            scale_scores=scale_scores, class_weight=class_weight)
 
         if plot:
             scores_df = self._get_scores_dataset(
@@ -240,8 +240,8 @@ class AnomalyDetector:
                 self.save_anom_scores(scores, classes, save_path)
 
         pred_cls = self.fit_thresholder(
-            scores=scores, classes=classes, scale_scores=scale_scores,
-            class_weight=class_weight)
+            scores=np.array(scores), classes=np.array(classes),
+            scale_scores=scale_scores, class_weight=class_weight)
 
         if plot:
             self.plot_preds_and_anomalies(
@@ -361,7 +361,7 @@ class AnomalyDetector:
 
     def save_anom_scores(
         self,
-        scores: List[float],
+        scores: List,
         classes: List[int],
         path: Path
     ):
@@ -376,12 +376,11 @@ class AnomalyDetector:
 
     def fit_thresholder(
         self,
-        scores: List[float] = None,
-        classes: List[int] = None,
+        scores: np.ndarray,
+        classes: np.ndarray,
         scale_scores: bool = False,
         class_weight: Dict = {0: 0.75, 1: 0.25}
     ) -> np.ndarray:
-        scores, classes = np.array(scores).reshape(-1, 1), np.array(classes)
         if scale_scores is not None:
             # scaling scores
             n_scores = self.scores_scaler.fit_transform(
