@@ -86,14 +86,38 @@ datasets_params = [
 ]
 
 
-model_name = 'TadGAN_ws%d_h200_l2_z100_g1d1_warm5' % window_size
 models_params = [
     ModelParams(
-        name_=model_name, cls_=TADGAN,
+        name_="VELC_ws%d_h50_l1_z20" % window_size, cls_=VELC,
         init_params=dict(
-            window_size=window_size, c_in=c_in, h_size=100, n_layers=1, z_size=50),
+            c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=20,
+            N_constraint=20, threshold=0),
+        WrapperCls=VELCWrapper
+    ),
+    ModelParams(
+        name_='TadGAN_ws%d_h50_l1_z20_g1d1_warm0' % window_size, cls_=TADGAN,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, h_size=50, n_layers=1, z_size=20),
         WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
             gen_dis_train_loops=(1, 1), warmup_epochs=0)
+    ),
+    ModelParams(
+        name_="AnomTrans_ws%d_l1_d20" % window_size, cls_=AnomalyTransformer,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, d_model=20, n_layers=1, lambda_=0.5),
+        WrapperCls=ATWrapper),
+    ModelParams(
+        name_="LSTMMVR_h100_z100_l1_zg0", cls_=LSTMMVR,
+        init_params=dict(
+            c_in=c_in, h_size=100, z_size=100, n_layers=1, z_glob_size=0),
+        WrapperCls=MVRWrapper
+    ),
+    ModelParams(
+        name_='ConvMVR_ws%d_nk4_ks3_es20_zg0' % window_size, cls_=ConvMVR,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, n_kernels=4,
+            kernel_size=3, emb_size=20, z_glob_size=0),
+        WrapperCls=MVRWrapper
     ),
 ]
 
@@ -102,9 +126,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=80, gpus=1, auto_lr_find=False)
+    max_epochs=15, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=15, min_delta=1e-3, verbose=True)
+    monitor='val_loss', patience=2, min_delta=1e-2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -116,34 +140,80 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp.run_experiments(
-    experiments_path="./saved_experiments",
-    safe=False
-)
-# exp = load_experimentator('./saved_experiments/2022-05-25_20:31:39.pkl')
 exp = load_last_experimentator('./saved_experiments')
-
-m_id, ds_id = 0, 0
+# exp.run_experiments(
+#     experiments_path="./saved_experiments",
+#     safe=True
+# )
 # plot_exp_predictions(
-#     exp, dataset_idx=ds_id,
-#     # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
+#     exp, dataset_idx=0,
+#     file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name, str(exp.exp_date))
 # )
 
-model = exp.load_pl_model(
-    m_id, os.path.join('checkpoints', dataset_name, model_name))
-model.fit_run_detection(
-    window_size=window_size,
-    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-    test_cls_path='./data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name),
-    min_points=3, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
-    ts_scaler=exp.get_targets_scaler(ds_id),
-    # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-    save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-    # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-    save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
-)
+
+
+# # exp = load_experimentator('./saved_experiments/2022-05-25_20:31:39.pkl')
+# exp = load_last_experimentator('./saved_experiments')
+
+# m_id, ds_id = 0, 0
+# # plot_exp_predictions(
+# #     exp, dataset_idx=ds_id,
+# #     # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
+# # )
+
+
+def get_dataset(
+    path: Path, window_size: int, ts_scaler: TransformerMixin = None
+) -> MultiTimeSeriesDataset:
+    df = pd.read_csv(
+        path, header=None
+    )
+    try:
+        df.columns = df.columns.astype(int)
+    except TypeError:
+        pass
+    if ts_scaler is not None:
+        df[:] = ts_scaler.transform(df)
+    dataset = MultiTimeSeriesDataset(
+        sequences=[df],
+        window_size=window_size,
+        target=df.columns.tolist()
+    )
+    return dataset
+
+
+ds_id = 0
+min_points = 3
+test_cls_path = './data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name)
+
+dataset = get_dataset(
+    path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+    window_size=window_size, ts_scaler=exp.get_targets_scaler(ds_id))
+data_classes = pd.read_csv(
+    test_cls_path, header=None)\
+    .iloc[:, 0].to_list()
+rec_classes = dataset.get_recs_cls_by_data_cls(
+    data_classes, min_points=min_points)
+n_models = exp.models_params.shape[0]
+
+for m_id in range(2, n_models):
+    model_name = exp.models_params.iloc[m_id]['name_']
+    model = exp.load_pl_model(
+        m_id, os.path.join('checkpoints', dataset_name, model_name))
+    model.fit_run_detection(
+        window_size=window_size,
+        test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+        rec_classes=rec_classes,
+        test_cls_path=test_cls_path,
+        min_points=min_points, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
+        ts_scaler=exp.get_targets_scaler(ds_id),
+        # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+        save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+        # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+        save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+        plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
+        save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
+    )
 
 
 

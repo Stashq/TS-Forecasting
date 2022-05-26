@@ -94,12 +94,13 @@ class ATWrapper(Reconstructor, AnomalyDetector):
     def anomaly_score(
         self, x, scale: bool = True, return_pred: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
-        x_hat, P_layers, S_layers = self.model(x)
-        ad = F.softmax(
-            -self.model.association_discrepancy(
-                P_layers, S_layers),
-            dim=0
-        )
+        with torch.no_grad():
+            x_hat, P_layers, S_layers = self.model(x)
+            ad = F.softmax(
+                -self.model.association_discrepancy(
+                    P_layers, S_layers),
+                dim=0
+            )
 
         assert ad.shape[0] == self.model.N
 

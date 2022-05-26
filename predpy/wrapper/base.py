@@ -279,8 +279,10 @@ class Reconstructor(ModelWrapper):
         return df
 
     def get_kld_loss(self, mu, log_sig):
-        loss = torch.mean(
+        loss = torch.mean(torch.mean(
             -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
-            dim=0
-        )
+            dim=1), dim=0)
+        # loss = torch.mean(
+        #     -0.5 * torch.sum(1 + log_sig - mu ** 2 - log_sig.exp(), dim=-1),
+        #     dim=0)
         return loss

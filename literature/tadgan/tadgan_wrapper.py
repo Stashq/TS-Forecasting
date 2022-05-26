@@ -32,6 +32,7 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         self.mse = nn.MSELoss()
         self.gen_loops, self.dis_loops = gen_dis_train_loops
         self.warmup_epochs = warmup_epochs
+        self.alpha = alpha
 
     @property
     def automatic_optimization(self) -> bool:
@@ -210,7 +211,7 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
             loss_mse = torch.linalg.norm(
                 (x - x_hat).reshape(batch_size, -1), ord=1, dim=1)
             loss_x = self.model.critic_x(x_hat)
-            score = self.alpha * loss_mse + (1 - self.alpha) * loss_x
+            score = self.alpha * loss_mse + (1 - self.alpha) * loss_x.squeeze()
 
         score = score.tolist()
         if scale:

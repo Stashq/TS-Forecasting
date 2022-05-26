@@ -45,6 +45,7 @@ def plot_predictions(
     scaler: TransformerMixin = None,
     are_ae: List[bool] = None,
     title: str = "Predictions",
+    n_rows: int = None,
     file_path: str = None,
     prevent_plot: bool = False
 ) -> go.Figure:
@@ -67,14 +68,15 @@ def plot_predictions(
         If type is string, chart will be saved to html file with provided
         path.
     """
-    fig = make_subplots(rows=true_vals.shape[1], cols=1)
+    if n_rows is None:
+        n_rows = true_vals.shape[1]
+    fig = make_subplots(rows=n_rows, cols=1)
 
     if scaler is not None:
         true_vals, predictions = _rescale_true_vals_and_preds(
             scaler=scaler, true_vals=true_vals, are_ae=are_ae,
             predictions_df=predictions)
-    n_targets = true_vals.shape[1]
-    for target_i in range(n_targets):
+    for target_i in range(true_vals.shape[1]):
         target_col = str(true_vals.columns[target_i])
         scatter_data = preds_and_true_vals_to_scatter_data(
             true_vals=true_vals, predictions=predictions, target=target_col,
@@ -86,7 +88,7 @@ def plot_predictions(
         fig.update_xaxes(title_text='date', row=target_i+1, col=1)
         fig.update_yaxes(title_text=target_col, row=target_i+1, col=1)
 
-    fig.update_layout(height=800 * n_targets, title_text=title)
+    fig.update_layout(height=800 * n_rows, title_text=title)
 
     if file_path is not None:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -688,14 +690,21 @@ def plot_anomalies(
     is_ae: bool = True,
     title: str = "Finding anomalies",
     model_name: str = "Model",
+    scores_df: pd.DataFrame = None,
     file_path: str = None
 ):
+    n_rows = time_series.shape[1]
+    if scores_df is not None:
+        n_rows += 1
     fig = plot_predictions(
         predictions=predictions, true_vals=time_series,
         models_names=[model_name], scaler=scaler,
-        are_ae=[is_ae], title=title, prevent_plot=True
+        are_ae=[is_ae], title=title, prevent_plot=True,
+        n_rows=n_rows
     )
-
+    if scores_df is not None:
+        _add_detection_scores(
+            fig=fig, scores_df=scores_df, row_id=n_rows, col_id=1)
     if pred_anomalies_intervals is not None:
         _add_vrects(
             fig, pred_anomalies_intervals,
@@ -714,6 +723,34 @@ def plot_anomalies(
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plot(fig, filename=file_path)
     fig.show()
+
+
+def _add_detection_scores(
+    fig, scores_df: pd.DataFrame, row_id: int, col_id: int = 1
+):
+    scatter_data = []
+    for score_col in scores_df.columns:
+        if score_col == 'class':
+            continue
+        scores_0 = scores_df[score_col][scores_df['class'] == 0]
+        scores_1 = scores_df[score_col][scores_df['class'] == 1]
+        scatter_data += [
+            go.Scatter(
+                x=scores_0.index.tolist(), y=scores_0.tolist(),
+                name=str(score_col), mode='markers', marker=dict(
+                    color='green')),
+            go.Scatter(
+                x=scores_1.index.tolist(), y=scores_1.tolist(),
+                name=str(score_col), mode='markers', marker=dict(
+                    color='red')),
+        ]
+    for trace in scatter_data:
+        fig.add_trace(
+            trace, row=row_id, col=1
+        )
+    fig.update_xaxes(title_text='date', row=row_id, col=col_id)
+    fig.update_yaxes(title_text='scores', row=row_id, col=col_id)
+    return fig
 
 
 # ==============================================================

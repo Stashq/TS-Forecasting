@@ -31,21 +31,22 @@ class ConstraintNet(nn.Module):
         x = F.relu(self.l1(x))
         x = F.relu(self.l2(x))
         C = self.l3(x)
-        C = C.view(-1, self.N, self.z_size)
+        C = C.view(batch_size, self.N, self.z_size)
 
-        w = torch.concat([
-            self.cos(z, C[:, i, :])
+        # w shape: batch x window x N
+        w = torch.stack([
+            self.cos(z, C[:, i, :].unsqueeze(dim=1))
             for i in range(self.N)
-        ]).view(-1, self.N)
+        ], dim=-1)  # .view(-1, self.N)
 
-        w_norm = torch.linalg.norm(w, dim=-1).unsqueeze(dim=-1)
-        w = w / w_norm
+        norm = torch.linalg.norm(w, dim=-1).unsqueeze(dim=-1)
+        w_norm = w / norm
 
-        w_mask = (w > self.threshold).float()
-        w_hat = (w * w_mask).unsqueeze(dim=1)
+        w_mask = (w_norm > self.threshold).float()
+        w_hat = (w_norm * w_mask)
 
+        # z_hat shape: batch x window x z_size
         z_hat = w_hat @ C
-        z_hat = z_hat.squeeze()
         return z_hat
 
 

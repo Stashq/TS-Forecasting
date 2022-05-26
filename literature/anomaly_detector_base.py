@@ -57,10 +57,12 @@ class AnomalyDetector:
         pass
 
     def fit_run_detection(
-        self, test_path: Path, test_cls_path: Path,
+        self, test_path: Path,
         window_size: int, min_points: int, plot: bool, scale_scores: bool,
         batch_size: int = 64, save_html_path=None,
         class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
+        test_cls_path: Path = None,
+        rec_classes: List[int] = [],
         load_scores_path: Path = None,
         save_scores_path: Path = None,
         load_preds_path: Path = None,
@@ -76,6 +78,8 @@ class AnomalyDetector:
         min_points is minimal points required in record sequence to be anomaly,
         scale_scores should be True only if model requires
         scaling anomaly scores"""
+        assert not (test_cls_path is None and len(rec_classes) == 0),\
+            'rec_classes and test_cls_path cannot be both None.'
         dataset = get_dataset(
             path=test_path, window_size=window_size, ts_scaler=ts_scaler)
         dataloader = DataLoader(
@@ -84,14 +88,12 @@ class AnomalyDetector:
             shuffle=False,
             num_workers=8
         )
-        if load_scores_path is None:
+        if load_scores_path is None and len(rec_classes) == 0:
             data_classes = pd.read_csv(
                 test_cls_path, header=None)\
                 .iloc[:, 0].to_list()
             rec_classes = dataset.get_recs_cls_by_data_cls(
                 data_classes, min_points=min_points)
-        else:
-            rec_classes = []
 
         self.fit_detector(
             dataloader=dataloader,
@@ -150,11 +152,16 @@ class AnomalyDetector:
             class_weight=class_weight)
 
         if plot:
+            scores_df = self._get_scores_dataset(
+                scores=np.array(scores), true_cls=np.array(classes),
+                dataset=dataloader.dataset)
             self.plot_preds_and_anomalies(
                 dataloader=dataloader, preds=preds,
                 classes=np.array(classes), pred_cls=pred_cls,
                 scaler=ts_scaler, save_html_path=save_html_path,
-                start_pos=start_plot_pos, end_pos=end_plot_pos)
+                start_pos=start_plot_pos, end_pos=end_plot_pos,
+                scores_df=scores_df
+            )
 
     def plot_preds_and_anomalies(
         self,
@@ -162,7 +169,8 @@ class AnomalyDetector:
         classes: np.ndarray, pred_cls: np.ndarray,
         scaler: TransformerMixin = None,
         save_html_path: Path = None,
-        start_pos=None, end_pos=None
+        start_pos=None, end_pos=None,
+        scores_df: pd.DataFrame = None
     ):
 
         pred_anom_ids = np.argwhere(pred_cls == 1)
@@ -183,8 +191,23 @@ class AnomalyDetector:
             pred_anomalies_intervals=pred_anom_intervals,
             true_anomalies_intervals=true_anom_intervals,
             scaler=scaler, is_ae=issubclass(type(self), Reconstructor),
-            title='Anomaly detection results', file_path=save_html_path
+            title='Anomaly detection results', file_path=save_html_path,
+            scores_df=scores_df
         )
+
+    def _get_scores_dataset(
+        self, scores: np.ndarray, true_cls: np.ndarray,
+        dataset: MultiTimeSeriesDataset
+    ):
+        assert scores.shape[0] == true_cls.shape[0]
+        ids = dataset.get_labels().index
+        if len(scores.shape) == 1:
+            scores = np.expand_dims(scores, axis=1)
+        true_cls = np.expand_dims(true_cls, axis=1)
+        data = np.concatenate([scores, true_cls], axis=1)
+        columns = [str(i) for i in range(scores.shape[1])] + ['class']
+        df = pd.DataFrame(data, columns=columns, index=ids)
+        return df
 
     def fit_detector_2_datasets(
         self,
