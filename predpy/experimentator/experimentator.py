@@ -685,6 +685,7 @@ def load_experimentator(path: str) -> Experimentator:
             loggers_params=attrs["loggers_params"],
             LoggersClasses=attrs["LoggersClasses"]
         )
+        exp.last_step_end = attrs["last_step_end"]
         exp.predictions = attrs["predictions"]
         exp.exp_date = attrs["exp_date"]
         return exp

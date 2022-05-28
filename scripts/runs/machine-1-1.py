@@ -49,17 +49,17 @@ from pathlib import Path
 window_size = 200
 batch_size = 64
 
-# c_in = 38
-# c_out = 38
-# topic = "Industry"
-# collection_name = "ServerMachineDataset"
-# dataset_name = "machine-1-1"
+c_in = 38
+c_out = 38
+topic = "Industry"
+collection_name = "ServerMachineDataset"
+dataset_name = "machine-1-1"
 
-c_in = 1
-c_out = 1
-topic = "Handmade"
-collection_name = "Sin"
-dataset_name = "artificial_1"
+# c_in = 1
+# c_out = 1
+# topic = "Handmade"
+# collection_name = "Sin"
+# dataset_name = "artificial_1"
 
 load_params = {
     "header": None, "names": [str(i) for i in range(c_in)]
@@ -85,28 +85,40 @@ datasets_params = [
         scaler=StandardScaler()),
 ]
 
+
 models_params = [
     ModelParams(
-        name_="AnomTrans_l2_d5_l2", cls_=AnomalyTransformer,
+        name_="VELC_ws%d_h50_l1_z20" % window_size, cls_=VELC,
         init_params=dict(
-            window_size=window_size, c_in=c_in, d_model=5, n_layers=2,
-            lambda_=0.5),
+            c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=20,
+            N_constraint=20, threshold=0),
+        WrapperCls=VELCWrapper
+    ),
+    ModelParams(
+        name_='TadGAN_ws%d_h50_l1_z20_g1d1_warm0' % window_size, cls_=TADGAN,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, h_size=50, n_layers=1, z_size=20),
+        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+            gen_dis_train_loops=(1, 1), warmup_epochs=0)
+    ),
+    ModelParams(
+        name_="AnomTrans_ws%d_l1_d20" % window_size, cls_=AnomalyTransformer,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, d_model=20, n_layers=1, lambda_=0.5),
         WrapperCls=ATWrapper),
-    # ModelParams(
-    #     name_="LSTMMVR_h50_z10_zg5", cls_=LSTMMVR,
-    #     init_params=dict(
-    #         c_in=c_in, h_size=50, z_size=10, n_layers=1, z_glob_size=5),
-    #     WrapperCls=MVRWrapper
-    # ),
-    # ModelParams(
-    #     name_="DAGMM_ws%d_h200_l1_z50_g9_esth200_drop0" % window_size, cls_=DAGMM,
-    #     init_params=dict(
-    #         window_size=window_size, c_in=c_in, h_size=200, z_c_size=50,
-    #         n_layers=1, n_gmm=9, est_h_size=200, est_dropout_p=0),
-    #     WrapperCls=DAGMMWrapper, wrapper_kwargs=dict(
-    #         lambda_energy=0, lambda_cov_diag=0
-    #     )
-    # ),
+    ModelParams(
+        name_="LSTMMVR_h50_z20_l1_zg0", cls_=LSTMMVR,
+        init_params=dict(
+            c_in=c_in, h_size=50, z_size=20, n_layers=1, z_glob_size=0),
+        WrapperCls=MVRWrapper
+    ),
+    ModelParams(
+        name_='ConvMVR_ws%d_nk4_ks3_es20_zg0' % window_size, cls_=ConvMVR,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, n_kernels=4,
+            kernel_size=3, emb_size=20, z_glob_size=0),
+        WrapperCls=MVRWrapper
+    ),
 ]
 
 
@@ -114,9 +126,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=15, gpus=1, auto_lr_find=False)
+    max_epochs=50, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=2, min_delta=1e-2, verbose=True)
+    monitor='val_loss', patience=4, min_delta=1e-2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -128,19 +140,15 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-# exp = load_experimentator('./saved_experiments/2022-05-27_22:36:05.pkl')
-# exp = load_last_experimentator('./saved_experiments')
-exp.run_experiments(
-    experiments_path="./saved_experiments",
-    safe=False
-)
-# model_name = exp.models_params.iloc[0]['name_']
-# model = exp.load_pl_model(
-#     0, os.path.join('checkpoints', dataset_name, model_name))
-plot_exp_predictions(
-    exp, dataset_idx=0,
-    file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name, str(exp.exp_date))
-)
+exp = load_last_experimentator('./saved_experiments')
+# exp.run_experiments(
+#     experiments_path="./saved_experiments",
+#     safe=True
+# )
+# plot_exp_predictions(
+#     exp, dataset_idx=0,
+#     file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name, str(exp.exp_date))
+# )
 
 
 
@@ -188,64 +196,27 @@ rec_classes = dataset.get_recs_cls_by_data_cls(
     data_classes, min_points=min_points)
 n_models = exp.models_params.shape[0]
 
-m_id = 0
-model_name = exp.models_params.iloc[m_id]['name_']
-model = exp.load_pl_model(
-    m_id, os.path.join('checkpoints', dataset_name, model_name))
-
-model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
-model.fit_run_detection(
-    window_size=window_size,
-    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-    rec_classes=rec_classes,
-    test_cls_path=test_cls_path,
-    min_points=min_points, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
-    ts_scaler=exp.get_targets_scaler(ds_id),
-    # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-    save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-    # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-    save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
-)
-
-model.scores_names = ['s_max', 's_mean']
-model.fit_run_detection(
-    window_size=window_size,
-    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-    rec_classes=rec_classes,
-    test_cls_path=test_cls_path,
-    min_points=min_points, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
-    ts_scaler=exp.get_targets_scaler(ds_id),
-    # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-    save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-    # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-    save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
-)
-
-# for m_id in range(0, n_models):
-#     model_name = exp.models_params.iloc[m_id]['name_']
-#     try:
-#         model = exp.load_pl_model(
-#             m_id, os.path.join('checkpoints', dataset_name, model_name))
-#         model.fit_run_detection(
-#             window_size=window_size,
-#             test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-#             rec_classes=rec_classes,
-#             test_cls_path=test_cls_path,
-#             min_points=min_points, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
-#             ts_scaler=exp.get_targets_scaler(ds_id),
-#             # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-#             save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-#             # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-#             save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-#             plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-#             save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
-#         )
-#     except:
-#         print('Problem with fit_run_detection on model "%s".' % model_name)
+for m_id in range(0, n_models):
+    model_name = exp.models_params.iloc[m_id]['name_']
+    try:
+        model = exp.load_pl_model(
+            m_id, os.path.join('checkpoints', dataset_name, model_name))
+        model.fit_run_detection(
+            window_size=window_size,
+            test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+            rec_classes=rec_classes,
+            test_cls_path=test_cls_path,
+            min_points=min_points, scale_scores=True, class_weight = {0: 0.5, 1: 0.5},
+            ts_scaler=exp.get_targets_scaler(ds_id),
+            # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+            save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+            # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+            save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+            plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
+            save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
+        )
+    except:
+        print('Problem with fit_run_detection on model "%s".' % model_name)
 
 
 

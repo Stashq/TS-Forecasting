@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from torch import optim
 from torch.nn.parameter import Parameter
+import torch.nn.functional as F
 from typing import Dict, Generator, List, Tuple, Union
 
 from models import LSTMEncoder, LSTMDecoder, ConvEncoder, ConvDecoder
@@ -14,7 +15,7 @@ class LSTMMVR(nn.Module):
     """LSTM Multivariate reconstructor"""
     def __init__(
         self, c_in: int, h_size: int, z_size: int,
-        n_layers: int = 1, z_glob_size: int = 0
+        z_glob_size: int, n_layers: int = 1, lambda_: float = 0.2
     ):
         super(LSTMMVR, self).__init__()
         self.encoders = nn.ModuleList([
@@ -27,22 +28,36 @@ class LSTMMVR(nn.Module):
                 z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=1)
             for _ in range(c_in)
         ])
+        self.lin_compres = nn.Linear(z_size, z_glob_size)
+        self.l_norm = nn.LayerNorm(z_glob_size)
+        self.redecoder = LSTMDecoder(
+            z_size=z_glob_size, h_size=h_size, n_layers=n_layers, x_size=c_in
+        )
         self.c_in = c_in
         self.z_glob_size = z_glob_size
+        self.lambda_ = lambda_
 
     def forward(self, x):
         seq_len = x.size(1)
-        # z = []
+        z = []
         x_hat = []
         for i in range(self.c_in):
             z_i = self.encoders[i](x[:, :, i:i+1])
             x_i_hat = self.decoders[i](z_i, seq_len=seq_len)
-            # z += [z_i]
+            z += [z_i]
             x_hat += [x_i_hat]
+        z = torch.concat(z, dim=-1)
         x_hat = torch.concat(x_hat, dim=-1)
+        z = F.relu(self.lin_compres(z))
+        z = self.l_norm(z)
+        z = z + self.lambda_\
+            * torch.randn(z.shape).to(
+                next(self.l_norm.parameters()).device
+            )
+        x_hat2 = self.redecoder(z, seq_len=seq_len)
         # z = torch.concat(z)
         # return x_hat, z
-        return x_hat
+        return x_hat, x_hat2
 
 
 class ConvMVR(nn.Module):
@@ -116,23 +131,28 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
 
     def step(self, batch):
         x, _ = self.get_Xy(batch)
-        x_hat = self.model(x)
-        loss = self.get_loss(x, x_hat)
+        x_hat1, x_hat2 = self.model(x)
+        loss1 = self.get_loss(x, x_hat1)
+        loss2 = self.get_loss(x, x_hat2)
+        loss = loss1 + loss2
         return loss
 
     def predict(self, x):
         with torch.no_grad():
-            return self.model(x)
+            x_hat, x_hat2 = self.model(x)
+            return x_hat2
 
     def anomaly_score(
         self, x, scale: bool = False, return_pred: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         with torch.no_grad():
-            x_hat = self.model.forward(x)
+            x_hat, x_hat2 = self.model.forward(x)
             # mse not including batch
-            score = torch.sum(
+            score1 = torch.sum(
                 torch.sum(torch.square(x - x_hat), dim=-1), dim=-1)
-        score = score.unsqueeze(1).tolist()
+            score2 = torch.sum(
+                torch.sum(torch.square(x - x_hat2), dim=-1), dim=-1)
+        score = torch.stack([score1, score2], dim=1).tolist()
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:

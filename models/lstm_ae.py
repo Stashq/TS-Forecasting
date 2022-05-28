@@ -9,7 +9,8 @@ class LSTMEncoder(nn.Module):
         x_size: int,
         h_size: int,
         n_layers: int,
-        emb_size: int = None
+        emb_size: int = None,
+        pass_last_h_state: bool = False
     ):
         super().__init__()
         self.lstm = nn.LSTM(
@@ -22,6 +23,7 @@ class LSTMEncoder(nn.Module):
             in_features=h_size,
             out_features=emb_size
         )
+        self.pass_last_h_state = pass_last_h_state
         # self.linear1 = nn.Linear(
         #     in_features=h_size,
         #     out_features=h_size
@@ -32,9 +34,12 @@ class LSTMEncoder(nn.Module):
         # )
 
     def forward(self, x):
-        # _, (h_n, _) = self.lstm(x)
-        emb, (_, _) = self.lstm(x)
-        emb = F.relu(emb)
+        # _, (h_l, _) = self.lstm(x)
+        emb, (h_l, _) = self.lstm(x)
+        if self.pass_last_h_state:
+            emb = F.relu(h_l[-1].unsqueeze(1))
+        else:
+            emb = F.relu(emb)
         # emb = F.relu(self.linear1(emb))
         # emb = F.relu(self.linear2(emb))
         emb = F.relu(self.linear(emb))
@@ -47,7 +52,8 @@ class LSTMDecoder(nn.Module):
         z_size: int,
         h_size: int,
         n_layers: int,
-        x_size: int
+        x_size: int,
+        last_h_on_input: bool = False
     ):
         super().__init__()
         self.lstm = nn.LSTM(
@@ -60,6 +66,7 @@ class LSTMDecoder(nn.Module):
             in_features=h_size,
             out_features=x_size
         )
+        self.last_h_on_input = last_h_on_input
         # self.linear1 = nn.Linear(
         #     in_features=h_size,
         #     out_features=h_size
@@ -71,7 +78,8 @@ class LSTMDecoder(nn.Module):
 
     def forward(self, z, seq_len: int):
         # z = z.unsqueeze(1)
-        # z = z.repeat(1, seq_len, 1)
+        if self.last_h_on_input:
+            z = z.repeat(1, seq_len, 1)
         emb, (_, _) = self.lstm(z)
         # emb = torch.flip(emb, dims=[1])
         emb = F.relu(emb)
@@ -87,7 +95,8 @@ class LSTMAE(nn.Module):
         c_in: int,
         h_size: int,
         n_layers: int,
-        z_size: int
+        z_size: int,
+        pass_last_h_state: bool = False
     ):
         super().__init__()
         self.c_in = c_in
@@ -95,9 +104,11 @@ class LSTMAE(nn.Module):
         self.h_size = h_size
         self.z_size = z_size
         self.encoder = LSTMEncoder(
-            x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
+            x_size=c_in, h_size=h_size, n_layers=n_layers,
+            emb_size=z_size, pass_last_h_state=pass_last_h_state)
         self.decoder = LSTMDecoder(
-            z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=c_in)
+            z_size=z_size, h_size=h_size, n_layers=n_layers,
+            x_size=c_in, last_h_on_input=pass_last_h_state)
 
     def forward(self, x):
         emb = self.encoder(x)

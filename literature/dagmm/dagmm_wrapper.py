@@ -4,10 +4,10 @@ from torch.nn.parameter import Parameter
 from typing import Dict, Generator, List
 
 from .dagmm import DAGMM
-from predpy.wrapper import ModelWrapper
+from predpy.wrapper import Reconstructor
 
 
-class DAGMMWrapper(ModelWrapper):
+class DAGMMWrapper(Reconstructor):
     def __init__(
         self,
         model: DAGMM = nn.Module(),

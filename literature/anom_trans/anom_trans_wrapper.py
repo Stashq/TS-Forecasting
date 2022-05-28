@@ -18,7 +18,8 @@ class ATWrapper(Reconstructor, AnomalyDetector):
         OptimizerClass: optim.Optimizer = optim.Adam,
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
-        params_to_train: Generator[Parameter, None, None] = None
+        params_to_train: Generator[Parameter, None, None] = None,
+        scores_names: List[str] = ['s_max', 's_mean']
     ):
         AnomalyDetector.__init__(self)
         Reconstructor.__init__(
@@ -29,6 +30,7 @@ class ATWrapper(Reconstructor, AnomalyDetector):
             params_to_train=params_to_train
         )
         self.mse = nn.MSELoss()
+        self.scores_names = scores_names
 
     @property
     def automatic_optimization(self) -> bool:
@@ -101,10 +103,11 @@ class ATWrapper(Reconstructor, AnomalyDetector):
                     P_layers, S_layers),
                 dim=1
             )
+            x_diff = x - x_hat
 
         assert ad.shape[1] == self.model.N
 
-        norm = torch.linalg.norm((x - x_hat), ord=2, dim=2)
+        norm = torch.linalg.norm(x_diff, ord=2, dim=2)
         # norm = torch.tensor(
         #     [
         #         torch.linalg.norm(x[:, i, :] - x_hat[:, i, :], ord=2)
@@ -114,17 +117,14 @@ class ATWrapper(Reconstructor, AnomalyDetector):
 
         assert norm.shape[1] == self.model.N
 
-        score = torch.mul(ad, norm)
-
-        max_score = torch.max(score, dim=1).values.tolist()
-        mean_score = torch.mean(score, dim=1).tolist()
-
-        res_score = [max_mean for max_mean in zip(max_score, mean_score)]
+        a_score = torch.mul(ad, norm)
+        res_scores = self.get_selected_scores(
+            self.scores_names, x_diff, a_score)
         if scale:
-            res_score = self.scores_scaler.transform(res_score).tolist()
+            res_scores = self.scores_scaler.transform(res_scores).tolist()
         if return_pred:
-            return res_score, x_hat
-        return res_score
+            return res_scores, x_hat
+        return res_scores
 
     def validation_step(self, batch, batch_idx):
         loss = self.val_step(batch)
@@ -143,3 +143,39 @@ class ATWrapper(Reconstructor, AnomalyDetector):
             self.log("test_min_loss", min_loss, prog_bar=True, logger=True)
             self.log("test_max_loss", max_loss, prog_bar=True, logger=True)
         return loss
+
+    def get_selected_scores(
+        self, s_names: List[str], x_diff, a_score
+    ) -> List:
+        res_score = []
+        for s_name in s_names:
+            res_score += [self.get_score(s_name, x_diff, a_score)]
+        res_score = torch.concat(
+            res_score
+        ).tolist()
+        return res_score
+
+    def get_score(self, name: str, x_diff, a_score) -> torch.Tensor:
+        # select data
+        if name[:2] == 'xd':
+            data = x_diff
+        elif name[0] == 's':
+            data = a_score
+        else:
+            raise ValueError(f'Unknown score name {name}.')
+
+        # calculate described score
+        score = None
+        if name[-2:] == 'l2':
+            score = torch.linalg.norm(data, dim=1, ord=2)
+        elif name[-3:] == 'max':
+            score = torch.max(data, dim=1).values
+        elif name[-4:] == 'mean':
+            score = torch.mean(data, dim=1)
+        else:
+            raise ValueError(f'Unknown score name {name}.')
+
+        # extend with second dim if necessary
+        if len(score.shape) == 1:
+            score = score.unsqueeze(1)
+        return score

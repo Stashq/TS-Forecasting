@@ -3,7 +3,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import numpy as np
 
 
@@ -109,7 +108,6 @@ class AnomalyTransformer(nn.Module):
              for _ in range(n_layers)]
         )
         self.decoding_layer = nn.Linear(d_model, c_in)
-
         # self.P_layers = []
         # self.S_layers = []
 
@@ -134,14 +132,15 @@ class AnomalyTransformer(nn.Module):
                 F.kl_div(Sl[row, :], Pl[row, :])
             )
 
-        batch_size, seq_len = Pl.shape[:2]
-        Pl = Pl.view(batch_size*seq_len, -1)
-        Sl = Sl.view(batch_size*seq_len, -1)
-        ad_vector = torch.concat(
-            [rowwise_kl(row, Pl, Sl).unsqueeze(0)
-             for row in range(batch_size*seq_len)]
-        )
-        ad_vector = ad_vector.view(batch_size, seq_len)
+        # batch_size, seq_len = Pl.shape[:2]
+        # Pl = Pl.view(batch_size*seq_len, -1)
+        # Sl = Sl.view(batch_size*seq_len, -1)
+        # ad_vector = torch.concat(
+        #     [rowwise_kl(row, Pl, Sl).unsqueeze(0)
+        #      for row in range(batch_size*seq_len)]
+        # )
+        ad_vector = torch.sum(F.kl_div(Pl, Sl, reduction='none'), dim=-1)
+        # ad_vector = ad_vector.view(batch_size, seq_len)
         return ad_vector
 
     def association_discrepancy(self, P_list, S_list):

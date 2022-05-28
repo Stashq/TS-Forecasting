@@ -10,42 +10,53 @@ from models import LSTMAE
 
 class EstimationNet(nn.Module):
     def __init__(
-        self, z_size: int, h_size: int, dropout_p: float, n_gmm: int
+        self, input_size: int,
+        h_size: int, dropout_p: float, n_gmm: int
     ):
         super(EstimationNet, self).__init__()
-        self.model = nn.Sequential(*[
-            nn.Linear(z_size, h_size),
-            nn.Tanh(),
-            nn.Dropout(p=dropout_p),
-            nn.Linear(h_size, n_gmm),
-            nn.Softmax(dim=1)
-        ])
+        # self.model = nn.Sequential(*[
+        #     nn.Linear(input_size, h_size),
+        #     nn.Tanh(),
+        #     nn.Dropout(p=dropout_p),
+        #     nn.Linear(h_size, n_gmm),
+        #     nn.Softmax(dim=1)
+        # ])
+        self.linear1 = nn.Linear(input_size, h_size)
+        self.dropout = nn.Dropout(p=dropout_p)
+        self.linear2 = nn.Linear(h_size, n_gmm)
 
     def forward(self, z):
-        gamma = self.model(z)
+        emb = F.tanh(self.linear1(z))
+        emb = self.dropout(emb)
+        gamma = self.linear2(emb)
+        gamma = F.softmax(gamma, dim=1)
         return gamma
 
 
 class DAGMM(nn.Module):
     def __init__(
-        self, c_in: int, z_c_size: int, n_layers: int,
-        n_gmm: int, est_h_size: int, est_dropout_p: int
+        self, window_size: int, c_in: int, h_size: int, z_c_size: int,
+        n_layers: int, n_gmm: int, est_h_size: int, est_dropout_p: int
     ):
         super(DAGMM, self).__init__()
         self.compression_net = LSTMAE(
-            c_in=c_in, h_size=z_c_size, n_layers=n_layers)
+            c_in=c_in, h_size=h_size, z_size=z_c_size,
+            n_layers=n_layers, pass_last_h_state=True)
 
+        self.estNet_input_size = 2 + z_c_size  # window_size * z_c_size
         self.estimation_net = EstimationNet(
-            z_size=z_c_size + 2, h_size=est_h_size,
-            dropout_p=est_dropout_p, n_gmm=n_gmm
+            input_size=self.estNet_input_size,
+            h_size=est_h_size, n_gmm=n_gmm,
+            dropout_p=est_dropout_p,
         )
 
         self.register_buffer(
             'phi', Variable(torch.zeros(n_gmm)))
         self.register_buffer(
-            'mu', Variable(torch.zeros(n_gmm, z_c_size)))
+            'mu', Variable(torch.zeros(n_gmm, self.estNet_input_size)))
         self.register_buffer(
-            'cov', Variable(torch.zeros(n_gmm, z_c_size, z_c_size)))
+            'cov', Variable(torch.zeros(
+                n_gmm, self.estNet_input_size, self.estNet_input_size)))
 
     def relative_euclidean_distance(self, a, b, dim=-1):
         return (a - b).norm(2, dim=dim) /\
@@ -56,22 +67,53 @@ class DAGMM(nn.Module):
         z_c = self.compression_net.encode(x)
         x_hat = self.compression_net.decode(z_c, seq_len)
 
-        rec_cosine = F.cosine_similarity(
-            x.view(batch_size, -1),
-            x_hat.view(batch_size, -1),
-            dim=-1)
         rec_euclidean = self.relative_euclidean_distance(
             x.view(batch_size, -1),
             x_hat.view(batch_size, -1),
-            dim=-1)
+            dim=1).view(batch_size, -1)
+        rec_cosine = F.cosine_similarity(
+            x.view(batch_size, -1),
+            x_hat.view(batch_size, -1),
+            dim=1).view(batch_size, -1)
         z = torch.cat(
-            [z_c,
-             rec_euclidean.unsqueeze(-1),
-             rec_cosine.unsqueeze(-1)],
-            dim=-1)
+            [z_c.view(batch_size, -1), rec_euclidean, rec_cosine],
+            dim=1)
 
         gamma = self.estimation_net(z)
         return x_hat, z_c, z, gamma
+
+    # def compute_gmm_params(self, z, gamma):
+    #     N = gamma.size(0)
+    #     # K
+    #     sum_gamma = torch.sum(gamma, dim=0)
+
+    #     # K
+    #     phi = (sum_gamma / N)
+
+    #     self.phi = phi.data
+
+    #     # K x D
+    #     mu = torch.sum(
+    #         gamma.unsqueeze(2) * z.unsqueeze(1), dim=0) /\
+    #         sum_gamma.unsqueeze(1)
+    #     self.mu = mu.data
+    #     # z = N x D
+    #     # mu = K x D
+    #     # gamma N x K
+
+    #     # z_mu = N x K x D
+    #     z_mu = z.unsqueeze(1) - mu.unsqueeze(0)
+
+    #     # z_mu_outer = N x K x D x D
+    #     z_mu_outer = z_mu.unsqueeze(-1) * z_mu.unsqueeze(-2)
+
+    #     # K x D x D
+    #     cov = torch.sum(
+    #       gamma.unsqueeze(-1).unsqueeze(-1) * z_mu_outer, dim=0)\
+    #         / sum_gamma.unsqueeze(-1).unsqueeze(-1)
+    #     self.cov = cov.data
+
+    #     return phi, mu, cov
 
     def compute_gmm_params(self, z, gamma):
         N = gamma.size(0)
@@ -84,16 +126,15 @@ class DAGMM(nn.Module):
         self.phi = phi.data
 
         # K x D
-        mu = torch.sum(
-            gamma.unsqueeze(2) * z.unsqueeze(1), dim=0) /\
-            sum_gamma.unsqueeze(1)
+        mu = torch.sum(gamma.unsqueeze(-1) * z.unsqueeze(1), dim=0)\
+            / sum_gamma.unsqueeze(-1)
         self.mu = mu.data
         # z = N x D
         # mu = K x D
         # gamma N x K
 
         # z_mu = N x K x D
-        z_mu = z.unsqueeze(1) - mu.unsqueeze(0)
+        z_mu = (z.unsqueeze(1) - mu.unsqueeze(0))
 
         # z_mu_outer = N x K x D x D
         z_mu_outer = z_mu.unsqueeze(-1) * z_mu.unsqueeze(-2)
@@ -165,4 +206,6 @@ class DAGMM(nn.Module):
         if size_average:
             sample_energy = torch.mean(sample_energy)
 
+        # sample_energy = torch.clip(sample_energy, max=5)
+        # cov_diag = torch.clip(cov_diag, max=5)
         return sample_energy, cov_diag

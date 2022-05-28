@@ -355,7 +355,7 @@ class AnomalyDetector:
             scores = []
             classes = []
             for row in reader:
-                scores += [float(row['score'])]
+                scores += [float(s) for s in row['score']]
                 classes += [int(row['class'])]
         return scores, classes
 
