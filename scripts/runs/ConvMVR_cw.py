@@ -217,7 +217,7 @@ model_name = exp.models_params.iloc[m_id]['name_']
 model = exp.load_pl_model(
     m_id, os.path.join('checkpoints', dataset_name, model_name))
 
-class_weight = {0: 0.5, 1: 0.5}
+class_weight = {0: 0.8, 1: 0.2}
 # model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
 model.fit_run_detection(
     window_size=window_size,
@@ -231,10 +231,7 @@ model.fit_run_detection(
     load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
     # save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
     plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name),
-    f_score_beta=0.5,
-    wdd_t_max=window_size/2,
-    wdd_w_f=0.002  # 0.39
+    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
 )
 
 # model.scores_names = ['s_max', 's_mean']
@@ -254,7 +251,7 @@ model.fit_run_detection(
 # )
 
 
-class_weight = {0: 0.8, 1: 0.2}
+class_weight = {0: 0.9, 1: 0.1}
 # model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
 model.fit_run_detection(
     window_size=window_size,
@@ -268,28 +265,25 @@ model.fit_run_detection(
     load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
     # save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
     plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name),
-    f_score_beta=0.5,
-    wdd_t_max=window_size/2,
-    wdd_w_f=0.002  # 0.39
+    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
 )
 
-# class_weight = {0: 0.95, 1: 0.05}
-# # model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
-# model.fit_run_detection(
-#     window_size=window_size,
-#     test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-#     rec_classes=rec_classes,
-#     test_cls_path=test_cls_path,
-#     min_points=min_points, scale_scores=True, class_weight=class_weight,
-#     ts_scaler=exp.get_targets_scaler(ds_id),
-#     load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-#     # save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-#     load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-#     # save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-#     plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-#     save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
-# )
+class_weight = {0: 0.95, 1: 0.05}
+# model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
+model.fit_run_detection(
+    window_size=window_size,
+    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+    rec_classes=rec_classes,
+    test_cls_path=test_cls_path,
+    min_points=min_points, scale_scores=True, class_weight=class_weight,
+    ts_scaler=exp.get_targets_scaler(ds_id),
+    load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+    # save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+    load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+    # save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+    plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
+    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
+)
 
 # model.scores_names = ['s_max', 's_mean']
 # model.fit_run_detection(

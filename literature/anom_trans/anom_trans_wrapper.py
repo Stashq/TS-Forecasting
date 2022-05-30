@@ -151,8 +151,9 @@ class ATWrapper(Reconstructor, AnomalyDetector):
         for s_name in s_names:
             res_score += [self.get_score(s_name, x_diff, a_score)]
         res_score = torch.concat(
-            res_score
-        ).tolist()
+            res_score, dim=1
+        )
+        res_score = res_score.tolist()
         return res_score
 
     def get_score(self, name: str, x_diff, a_score) -> torch.Tensor:

@@ -4,6 +4,7 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 import os
+import re
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from string import Template
@@ -14,6 +15,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from typing import Union, Tuple, Dict, List, Literal
+from sklearn.metrics import fbeta_score
 
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies
@@ -21,6 +23,14 @@ from predpy.wrapper import Reconstructor
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
 Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
+
+
+def _str_to_float_list(text: str) -> List[float]:
+    floats = re.findall(r'\d+.\d+', text)
+    res = []
+    for f in floats:
+        res += [float(f)]
+    return res
 
 
 def get_dataset(
@@ -69,7 +79,10 @@ class AnomalyDetector:
         save_preds_path: Path = None,
         ts_scaler: TransformerMixin = None,
         start_plot_pos: int = None,
-        end_plot_pos: int = None
+        end_plot_pos: int = None,
+        f_score_beta: float = None,
+        wdd_t_max: int = None,
+        wdd_w_f: float = None
     ):
         """test_path file should contain columns of features
         without header in first line,
@@ -107,7 +120,9 @@ class AnomalyDetector:
             save_preds_path=save_preds_path,
             ts_scaler=ts_scaler,
             start_plot_pos=start_plot_pos,
-            end_plot_pos=end_plot_pos
+            end_plot_pos=end_plot_pos,
+            f_score_beta=f_score_beta,
+            wdd_t_max=wdd_t_max, wdd_w_f=wdd_w_f
         )
 
     def fit_detector(
@@ -124,7 +139,10 @@ class AnomalyDetector:
         end_plot_pos: int = None,
         scale_scores: bool = False,
         ts_scaler: TransformerMixin = None,
-        save_html_path: Path = None
+        save_html_path: Path = None,
+        f_score_beta: float = None,
+        wdd_t_max: int = None,
+        wdd_w_f: float = None
     ):
         assert classes is not None or load_scores_path is not None,\
             'Classes can not be None. Pass it or load from file.'
@@ -150,6 +168,18 @@ class AnomalyDetector:
         pred_cls = self.fit_thresholder(
             scores=np.array(scores), classes=np.array(classes),
             scale_scores=scale_scores, class_weight=class_weight)
+
+        if f_score_beta is not None:
+            f_score = fbeta_score(
+                classes, pred_cls, beta=f_score_beta, average='macro')
+            print("F_%.2f_score: %.3f" % (f_score_beta, f_score))
+        if wdd_t_max is not None and wdd_w_f is not None:
+            wdd = dataloader.dataset.calculate_wdd(
+                pred_rec_cls=pred_cls, true_rec_cls=classes,
+                t_max=wdd_t_max, w_f=wdd_w_f
+            )
+            print("WDD score (t_max=%d, wf=%.2f): %.3f" %
+                  (wdd_t_max, wdd_w_f, wdd))
 
         if plot:
             scores_df = self._get_scores_dataset(
@@ -219,7 +249,7 @@ class AnomalyDetector:
         plot: bool = False,
         scale_scores: bool = False,
         ts_scaler: TransformerMixin = None,
-        save_html_path: Path = None
+        save_html_path: Path = None,
     ):
         self.eval()
         if load_path is not None:
@@ -355,7 +385,7 @@ class AnomalyDetector:
             scores = []
             classes = []
             for row in reader:
-                scores += [float(s) for s in row['score']]
+                scores += [_str_to_float_list(row['score'])]
                 classes += [int(row['class'])]
         return scores, classes
 

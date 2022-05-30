@@ -10,6 +10,7 @@ from .time_series_dataset import TimeSeriesDataset
 from typing import Dict, List, Literal, Tuple, Union
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
+import scipy
 
 
 class MultiTimeSeriesDataset(TimeSeriesDataset):
@@ -179,6 +180,13 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         label = self.sequences[seq_id]\
             .iloc[rec_id_in_seq + self.window_size][self.target]
         return seq, label
+
+    def set_record(self, idx: int, target: str, vals):
+        seq_id, rec_id_in_seq = self._global_id_to_seq_rec_id(idx)
+        col_idx = self.sequences[0].columns.get_loc(target)
+        self.sequences[seq_id].iloc[
+            rec_id_in_seq:rec_id_in_seq + self.window_size, col_idx] =\
+            vals
 
     def __len__(self) -> int:
         """Returns number of samples in dataset.\n
@@ -388,20 +396,89 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         else:
             return 1
 
+    def calculate_wdd(
+        self, pred_rec_cls: List[int],
+        true_rec_cls: List[int], t_max: int, w_f: float
+    ) -> int:
+        self._add_column('true_cls', 0)
+        self._add_column('pred_cls', 0)
+
+        positive_ids = np.argwhere(
+            (np.array(pred_rec_cls) == 1) | (np.array(true_rec_cls) == 1)
+        ).flatten().tolist()
+        for idx in tqdm(positive_ids, 'Collecting data classes'):
+            self.set_record(idx, 'true_cls', true_rec_cls[idx])
+            self.set_record(idx, 'pred_cls', pred_rec_cls[idx])
+
+        seqs = pd.concat(self.sequences)
+        # def w(row):
+        #     if row['true_cls'] == 1:
+        #         frame = frames[row.name]
+        #         frame[frame == 1]
+        # frames = seqs.apply(
+        #     lambda col:
+        #         [seqs['pred_cls'][col.name-max_t:col.name+max_t+1]], axis=1)
+        nd = scipy.stats.norm(loc=0, scale=t_max)
+
+        def score(row):
+            # calculate w
+            if row['true_cls'] == 1:
+                idx = row.name
+                frame = seqs.loc[idx-t_max:idx+t_max]
+                preds = frame[frame['pred_cls'] == 1]
+                if preds.shape[0] == 0:
+                    return 0
+                else:
+                    diff = abs(preds.index - idx).min()
+                    return nd.pdf(diff)
+            # find FA
+            elif row['pred_cls'] == 1:
+                idx = row.name
+                frame = seqs.loc[idx-t_max:idx+t_max]
+                preds = frame[frame['true_cls'] == 1]
+                # detected anomaly (DA)
+                if preds.shape[0] > 0:
+                    return 0
+                # false anomaly (FA)
+                else:
+                    return -w_f
+            else:
+                return 0
+        scores = seqs.apply(score, axis=1)
+        wdd = scores.sum()
+
+        self._remove_column('true_cls')
+        self._remove_column('pred_cls')
+        return wdd
+
+    # def get_data_cls_by_recs_cls(
+    #     self, recs_cls: List[int]
+    # ) -> List[int]:
+    #     assert self.__len__() == len(recs_cls),\
+    #         f'"recs_cls" len {len(recs_cls)}, dataset len {self.__len__()}'
+    #     self._add_column('class', values=0)
+    #     for i in tqdm(range(self.__len__()), 'Collecting predicted data classes'):
+    #         res += [self._get_rec_class(
+    #             idx=i, col_name=col_name, min_points=min_points)]
+    #     self._remove_column('class')
+
     def _add_column(
-        self, new_col_name, values: List,
+        self, new_col_name, values: Union[List[int], int] = 0,
         include_col_in_target: bool = False
     ):
         len_ = sum([seq.shape[0] for seq in self.sequences])
-        if len_ != len(values):
+        if type(values) is not int and len_ != len(values):
             raise ValueError(
                 'Data len %d different than values len %d.'
                 % (len_, len(values)))
 
         for seq in self.sequences:
             seq_len = seq.shape[0]
-            seq[new_col_name] = values[:seq_len]
-            values = values[seq_len:]
+            if type(values) == int:
+                seq[new_col_name] = values
+            else:
+                seq[new_col_name] = values[:seq_len]
+                values = values[seq_len:]
 
         if include_col_in_target:
             self.target = self.target + [new_col_name]
