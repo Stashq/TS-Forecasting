@@ -15,8 +15,7 @@ class LSTMMVR(nn.Module):
     """LSTM Multivariate reconstructor"""
     def __init__(
         self, window_size: int, c_in: int, h_size: int, z_size: int,
-        h_glob_size: int, z_glob_size: int, n_layers: int = 1,
-        lambda_: float = 0.2
+        n_layers: int = 1, lambda_: float = 0.2
     ):
         super(LSTMMVR, self).__init__()
         self.encoders = nn.ModuleList([
@@ -29,50 +28,41 @@ class LSTMMVR(nn.Module):
                 z_size=z_size, h_size=h_size, n_layers=n_layers, x_size=1)
             for _ in range(c_in)
         ])
-        # self.l_com1 = nn.Linear(window_size, h_glob_size)
-        # self.l_com2 = nn.Linear(h_glob_size, z_glob_size)
-        # self.l_norm = nn.LayerNorm(z_glob_size)
+        self.l_norm = nn.LayerNorm(z_size*c_in)
         self.redecoder = LSTMDecoder(
-            z_size=1, h_size=h_size, n_layers=n_layers, x_size=1,
-            last_h_on_input=False
+            z_size=z_size*c_in, h_size=h_size, n_layers=n_layers, x_size=c_in
         )
         self.window_size = window_size
         self.c_in = c_in
-        self.z_glob_size = z_glob_size
         self.lambda_ = lambda_
 
     def forward(self, x):
         batch_size, seq_len = x.shape[:2]
         z = []
-        x_hat = []
+        x_hat1 = []
         for i in range(self.c_in):
             z_i = self.encoders[i](x[:, :, i:i+1])
             x_i_hat = self.decoders[i](z_i, seq_len=seq_len)
             z += [z_i]
-            x_hat += [x_i_hat]
+            x_hat1 += [x_i_hat]
         z = torch.concat(z, dim=-1)
-        x_hat1 = torch.concat(x_hat, dim=-1)
+        x_hat1 = torch.concat(x_hat1, dim=-1)
 
-        # z = z.transpose(1, 2)
-        # z = F.relu(self.l_com1(z))
-        # z = self.l_com2(z)
-        # z = self.l_norm(z)
-        # z = z + self.lambda_\
-        #     * torch.randn(z.shape).to(
-        #         next(self.l_norm.parameters()).device
-        #     )
-        # z = z.transpose(1, 2)
-        # z = z.transpose(1, 2)
+        z = self.l_norm(z)
+        z = z + self.lambda_\
+            * torch.randn(z.shape).to(
+                next(self.l_norm.parameters()).device
+            )
+
         # x_hat2 = []
         # for i in range(self.c_in):
-        #     # x_i_hat2 = self.redecoder(z[:, i:i+1, :], seq_len=seq_len)
-        #     x_i_hat2 = self.redecoder(z[:, :, i:i+1], seq_len=seq_len)
+        #     x_i_hat2 = self.redecoder(
+        #         z[:, i*self.n_kernels:(i+1)*self.n_kernels, :])
         #     x_hat2 += [x_i_hat2]
-        # # x_hat2 = self.redecoder(z, seq_len=seq_len)
         # x_hat2 = torch.concat(x_hat2, dim=-1)
-        # z = torch.concat(z)
-        # return x_hat, z
-        return x_hat1  # , x_hat2
+        x_hat2 = self.redecoder(z, seq_len=seq_len)
+
+        return x_hat1, x_hat2
 
 
 class ConvMVR(nn.Module):
@@ -84,7 +74,6 @@ class ConvMVR(nn.Module):
         n_kernels: int,
         kernel_size: int,
         emb_size: int,
-        z_glob_size: int,
         padding: int = 0,
         stride: int = 1,
         lambda_: float = 0.1,
@@ -104,17 +93,12 @@ class ConvMVR(nn.Module):
                 stride=stride)
             for _ in range(c_in)
         ])
-        # self.l_com1 = nn.Linear(window_size, h_glob_size)
-        # self.l_com2 = nn.Linear(h_glob_size, z_glob_size)
-        # enc_out_size = get_conv_output_size(
-        #     window_size, kernel_size, padding, stride)
         self.l_norm = nn.LayerNorm(emb_size)
         self.redecoder = ConvDecoder(
-            window_size=window_size, x_chanels=1, emb_chanels=n_kernels,
-            kernel_size=kernel_size, emb_size=emb_size, padding=padding,
-            stride=stride)
+            window_size=window_size, x_chanels=c_in,
+            emb_chanels=n_kernels*c_in, kernel_size=kernel_size,
+            emb_size=emb_size, padding=padding, stride=stride)
         self.c_in = c_in
-        self.z_glob_size = z_glob_size
         self.n_kernels = n_kernels
         self.lambda_ = lambda_
 
@@ -135,12 +119,13 @@ class ConvMVR(nn.Module):
                 next(self.l_norm.parameters()).device
             )
 
-        x_hat2 = []
-        for i in range(self.c_in):
-            x_i_hat2 = self.redecoder(
-                z[:, i*self.n_kernels:(i+1)*self.n_kernels, :])
-            x_hat2 += [x_i_hat2]
-        x_hat2 = torch.concat(x_hat2, dim=-1)
+        # x_hat2 = []
+        # for i in range(self.c_in):
+        #     x_i_hat2 = self.redecoder(
+        #         z[:, i*self.n_kernels:(i+1)*self.n_kernels, :])
+        #     x_hat2 += [x_i_hat2]
+        # x_hat2 = torch.concat(x_hat2, dim=-1)
+        x_hat2 = self.redecoder(z)
 
         return x_hat1, x_hat2
 
@@ -171,7 +156,6 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
 
     def step(self, batch):
         x, _ = self.get_Xy(batch)
-        # x_hat1 = self.model(x)
         x_hat1, x_hat2 = self.model(x)
         loss1 = self.get_loss(x, x_hat1)
         loss2 = self.get_loss(x, x_hat2)
@@ -187,7 +171,6 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
         self, x, scale: bool = False, return_pred: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         with torch.no_grad():
-            # x_hat1 = self.model(x)
             x_hat1, x_hat2 = self.model(x)
             # mse not including batch
             score1 = torch.sum(
@@ -195,7 +178,6 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
             score2 = torch.sum(
                 torch.sum(torch.square(x - x_hat2), dim=-1), dim=-1)
         score = torch.stack([score1, score2], dim=1).tolist()
-        # score = score1.unsqueeze(1)
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:

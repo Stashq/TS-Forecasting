@@ -359,7 +359,7 @@ class Experimentator:
     ):
         return (dataset_idx < self.last_step_end[0] or
                 (dataset_idx == self.last_step_end[0] and
-                self.last_step_end[0] < self.models_params.shape[0]-1))
+                self.last_step_end[1] == self.models_params.shape[0]-1))
 
     def run_experiments(
         self,
@@ -392,7 +392,6 @@ class Experimentator:
         Experimentator
             Executed experiment.
         """
-
         if continue_run is False or\
                 self.exp_date is None or self.last_step_end is None:
             self.last_step_end = (-1, -1)

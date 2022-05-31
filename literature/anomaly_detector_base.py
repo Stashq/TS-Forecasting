@@ -9,13 +9,14 @@ from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from string import Template
 from sklearn.base import TransformerMixin
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, make_scorer
 from sklearn.preprocessing import MinMaxScaler
 import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from typing import Union, Tuple, Dict, List, Literal
 from sklearn.metrics import fbeta_score
+from sklearn.model_selection import GridSearchCV
 
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies
@@ -70,7 +71,7 @@ class AnomalyDetector:
         self, test_path: Path,
         window_size: int, min_points: int, plot: bool, scale_scores: bool,
         batch_size: int = 64, save_html_path=None,
-        class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
+        # class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
         test_cls_path: Path = None,
         rec_classes: List[int] = [],
         load_scores_path: Path = None,
@@ -82,7 +83,8 @@ class AnomalyDetector:
         end_plot_pos: int = None,
         f_score_beta: float = None,
         wdd_t_max: int = None,
-        wdd_w_f: float = None
+        wdd_w_f: float = None,
+        wdd_ma_f: float = 0
     ):
         """test_path file should contain columns of features
         without header in first line,
@@ -101,7 +103,8 @@ class AnomalyDetector:
             shuffle=False,
             num_workers=8
         )
-        if load_scores_path is None and len(rec_classes) == 0:
+        if load_scores_path is None and\
+                (rec_classes is None or len(rec_classes) == 0):
             data_classes = pd.read_csv(
                 test_cls_path, header=None)\
                 .iloc[:, 0].to_list()
@@ -113,7 +116,7 @@ class AnomalyDetector:
             classes=np.array(rec_classes),
             plot=plot, scale_scores=scale_scores,
             save_html_path=save_html_path,
-            class_weight=class_weight,
+            # class_weight=class_weight,
             load_scores_path=load_scores_path,
             save_scores_path=save_scores_path,
             load_preds_path=load_preds_path,
@@ -122,7 +125,8 @@ class AnomalyDetector:
             start_plot_pos=start_plot_pos,
             end_plot_pos=end_plot_pos,
             f_score_beta=f_score_beta,
-            wdd_t_max=wdd_t_max, wdd_w_f=wdd_w_f
+            wdd_t_max=wdd_t_max, wdd_w_f=wdd_w_f,
+            wdd_ma_f=wdd_ma_f
         )
 
     def fit_detector(
@@ -133,16 +137,17 @@ class AnomalyDetector:
         save_scores_path: Path = None,
         load_preds_path: Path = None,
         save_preds_path: Path = None,
-        class_weight: Dict = {0: 0.75, 1: 0.25},
+        # class_weight: Dict = {0: 0.75, 1: 0.25},
         plot: bool = False,
         start_plot_pos: int = None,
         end_plot_pos: int = None,
         scale_scores: bool = False,
         ts_scaler: TransformerMixin = None,
         save_html_path: Path = None,
-        f_score_beta: float = None,
+        f_score_beta: float = 0.5,
         wdd_t_max: int = None,
-        wdd_w_f: float = None
+        wdd_w_f: float = None,
+        wdd_ma_f: float = 0
     ):
         assert classes is not None or load_scores_path is not None,\
             'Classes can not be None. Pass it or load from file.'
@@ -167,19 +172,14 @@ class AnomalyDetector:
                     scores=scores, classes=classes, path=save_scores_path)
         pred_cls = self.fit_thresholder(
             scores=np.array(scores), classes=np.array(classes),
-            scale_scores=scale_scores, class_weight=class_weight)
+            scale_scores=scale_scores,  # class_weight=class_weight,
+            f_score_beta=f_score_beta)
 
-        if f_score_beta is not None:
-            f_score = fbeta_score(
-                classes, pred_cls, beta=f_score_beta, average='macro')
-            print("F_%.2f_score: %.3f" % (f_score_beta, f_score))
-        if wdd_t_max is not None and wdd_w_f is not None:
-            wdd = dataloader.dataset.calculate_wdd(
-                pred_rec_cls=pred_cls, true_rec_cls=classes,
-                t_max=wdd_t_max, w_f=wdd_w_f
-            )
-            print("WDD score (t_max=%d, wf=%.2f): %.3f" %
-                  (wdd_t_max, wdd_w_f, wdd))
+        self.save_stats(
+            true_cls=classes, pred_cls=pred_cls, wdd_t_max=wdd_t_max,
+            wdd_w_f=wdd_w_f, wdd_ma_f=wdd_ma_f, dataloader=dataloader,
+            f_score_beta=f_score_beta
+        )
 
         if plot:
             scores_df = self._get_scores_dataset(
@@ -192,6 +192,29 @@ class AnomalyDetector:
                 start_pos=start_plot_pos, end_pos=end_plot_pos,
                 scores_df=scores_df
             )
+
+    def save_stats(
+        self, true_cls: List[Literal[0, 1]], pred_cls: List[Literal[0, 1]],
+        wdd_t_max: int, wdd_w_f: float, wdd_ma_f: float,
+        dataloader: int, f_score_beta: float = 0.5
+    ):
+        m_name = self.model.__class__.__name__
+        m_params = self.model.params
+        wdd = ''
+        f_score = fbeta_score(
+            true_cls, pred_cls, beta=f_score_beta, average='macro')
+        print("F_%.2f_score: %.3f" % (f_score_beta, f_score))
+        if wdd_t_max is not None and wdd_w_f is not None:
+            wdd = dataloader.dataset.calculate_wdd(
+                pred_rec_cls=pred_cls, true_rec_cls=true_cls,
+                t_max=wdd_t_max, w_f=wdd_w_f, ma_f=wdd_ma_f
+            )
+            print("WDD score (t_max=%d, wf=%.3f, ma=%.3f): %.3f" %
+                  (wdd_t_max, wdd_w_f, wdd_ma_f, wdd))
+        row = [m_name, m_params, f_score_beta, f_score, wdd]
+        with open('./saved_experiments/fit_detector.csv', 'a') as file:
+            writer = csv.writer(file)
+            writer.writerow(row)
 
     def plot_preds_and_anomalies(
         self,
@@ -409,7 +432,8 @@ class AnomalyDetector:
         scores: np.ndarray,
         classes: np.ndarray,
         scale_scores: bool = False,
-        class_weight: Dict = {0: 0.75, 1: 0.25}
+        # class_weight: Dict = {0: 0.75, 1: 0.25},
+        f_score_beta: float = 0.5
     ) -> np.ndarray:
         if scale_scores is not None:
             # scaling scores
@@ -422,12 +446,17 @@ class AnomalyDetector:
             scores[np.where(classes == 1)] = a_scores
 
         # fitting thresholder
-        self.thresholder = LogisticRegression(
-            class_weight=class_weight).fit(scores, classes)
+        scorer = make_scorer(fbeta_score, beta=f_score_beta, average='macro')
+        gs = GridSearchCV(LogisticRegression(), param_grid={'class_weight': [
+            {0.6, 0.4}, {0.7, 0.3}, {0.8, 0.2}, {0.9, 0.1}]},
+            scoring=scorer)
+        gs.fit(scores, classes)
+        self.thresholder = gs.best_estimator_
         pred_cls = self.thresholder.predict(scores)
 
         # printing classification results
         cm = confusion_matrix(classes, pred_cls)
+        print('Best class weights: %s' % str(self.thresholder.class_weight))
         print(cm)
 
         return pred_cls

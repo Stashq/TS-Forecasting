@@ -19,7 +19,7 @@ class ATWrapper(Reconstructor, AnomalyDetector):
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
         params_to_train: Generator[Parameter, None, None] = None,
-        scores_names: List[str] = ['s_max', 's_mean']
+        scores_names: List[str] = ['xd_max', 'xd_l2', 's_max', 's_mean']
     ):
         AnomalyDetector.__init__(self)
         Reconstructor.__init__(

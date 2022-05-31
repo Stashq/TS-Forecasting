@@ -398,8 +398,23 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
 
     def calculate_wdd(
         self, pred_rec_cls: List[int],
-        true_rec_cls: List[int], t_max: int, w_f: float
-    ) -> int:
+        true_rec_cls: List[int], t_max: int, w_f: float, ma_f: float = 0
+    ) -> float:
+        """Calculate WDD score from article
+        'Evaluation metrics for anomaly detection algorithms in time-series'
+        based on gaussian distribution function.
+
+        Args:
+            pred_rec_cls (List[int]): predicted records classes.
+            true_rec_cls (List[int]): true records classes.
+            t_max (int): maximum distance between paired
+                predicted and true anomaly position.
+            w_f (float): false anomaly detenction penalty.
+            ma_f (float, optional): missed anomaly penalty. Defaults to 0.
+
+        Returns:
+            float: wdd score.
+        """
         self._add_column('true_cls', 0)
         self._add_column('pred_cls', 0)
 
@@ -411,13 +426,6 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             self.set_record(idx, 'pred_cls', pred_rec_cls[idx])
 
         seqs = pd.concat(self.sequences)
-        # def w(row):
-        #     if row['true_cls'] == 1:
-        #         frame = frames[row.name]
-        #         frame[frame == 1]
-        # frames = seqs.apply(
-        #     lambda col:
-        #         [seqs['pred_cls'][col.name-max_t:col.name+max_t+1]], axis=1)
         nd = scipy.stats.norm(loc=0, scale=t_max)
 
         def score(row):
@@ -426,8 +434,9 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
                 idx = row.name
                 frame = seqs.loc[idx-t_max:idx+t_max]
                 preds = frame[frame['pred_cls'] == 1]
+                # missed anomaly penalty
                 if preds.shape[0] == 0:
-                    return 0
+                    return -ma_f
                 else:
                     diff = abs(preds.index - idx).min()
                     return nd.pdf(diff)
@@ -439,7 +448,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
                 # detected anomaly (DA)
                 if preds.shape[0] > 0:
                     return 0
-                # false anomaly (FA)
+                # false anomaly penalty
                 else:
                     return -w_f
             else:
@@ -450,17 +459,6 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         self._remove_column('true_cls')
         self._remove_column('pred_cls')
         return wdd
-
-    # def get_data_cls_by_recs_cls(
-    #     self, recs_cls: List[int]
-    # ) -> List[int]:
-    #     assert self.__len__() == len(recs_cls),\
-    #         f'"recs_cls" len {len(recs_cls)}, dataset len {self.__len__()}'
-    #     self._add_column('class', values=0)
-    #     for i in tqdm(range(self.__len__()), 'Collecting predicted data classes'):
-    #         res += [self._get_rec_class(
-    #             idx=i, col_name=col_name, min_points=min_points)]
-    #     self._remove_column('class')
 
     def _add_column(
         self, new_col_name, values: Union[List[int], int] = 0,
