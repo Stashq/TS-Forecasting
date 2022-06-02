@@ -143,8 +143,8 @@ cython_debug/
 checkpoints
 lightning_logs
 saved_experiments
-saved_score_preds
-200.csv
+saved_scores_preds
+
 
 # data
 data/*
@@ -155,6 +155,4 @@ notebooks/*
 
 pages
 tmp.csv
-anom_scores.csv
-preds.csv
 fit_detector*
