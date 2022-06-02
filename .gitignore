@@ -155,4 +155,5 @@ notebooks/*
 
 pages
 tmp.csv
-fit_detector*
+fit_detector.csv
+fit_detector.json
