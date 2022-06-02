@@ -1,5 +1,6 @@
 from abc import abstractmethod
 import csv
+import json
 from datetime import timedelta
 import numpy as np
 import pandas as pd
@@ -56,8 +57,9 @@ def get_dataset(
 
 class AnomalyDetector:
     def __init__(
-        self,
+        self, score_names: List[str] = None
     ):
+        self.score_names = score_names
         self.thresholder = LogisticRegression()
         self.scores_scaler = MinMaxScaler()
 
@@ -69,9 +71,11 @@ class AnomalyDetector:
 
     def fit_run_detection(
         self, test_path: Path,
-        window_size: int, min_points: int, plot: bool, scale_scores: bool,
+        window_size: int, min_points: int, scale_scores: bool,
+        model_train_date: str,
+        plot_preds: bool = False,
+        plot_scores: bool = False,
         batch_size: int = 64, save_html_path=None,
-        # class_weight: Dict[Literal[0, 1], float] = {0: 0.5, 1: 0.5},
         test_cls_path: Path = None,
         rec_classes: List[int] = [],
         load_scores_path: Path = None,
@@ -111,12 +115,15 @@ class AnomalyDetector:
             rec_classes = dataset.get_recs_cls_by_data_cls(
                 data_classes, min_points=min_points)
 
+        ds_name = Path(test_path).stem
         self.fit_detector(
             dataloader=dataloader,
+            ds_name=ds_name, model_train_date=model_train_date,
             classes=np.array(rec_classes),
-            plot=plot, scale_scores=scale_scores,
+            plot_preds=plot_preds,
+            plot_scores=plot_scores,
+            scale_scores=scale_scores,
             save_html_path=save_html_path,
-            # class_weight=class_weight,
             load_scores_path=load_scores_path,
             save_scores_path=save_scores_path,
             load_preds_path=load_preds_path,
@@ -132,13 +139,14 @@ class AnomalyDetector:
     def fit_detector(
         self,
         dataloader: MultiTimeSeriesDataloader,
+        ds_name: str, model_train_date: str,
+        plot_preds: bool = False,
+        plot_scores: bool = False,
         classes: np.ndarray = None,
         load_scores_path: Path = None,
         save_scores_path: Path = None,
         load_preds_path: Path = None,
         save_preds_path: Path = None,
-        # class_weight: Dict = {0: 0.75, 1: 0.25},
-        plot: bool = False,
         start_plot_pos: int = None,
         end_plot_pos: int = None,
         scale_scores: bool = False,
@@ -156,9 +164,10 @@ class AnomalyDetector:
             if load_preds_path is not None:
                 preds = pd.read_csv(load_preds_path)
         else:
+            return_pred = plot_preds or save_preds_path is not None
             scores = self.score_dataset(
-                dataloader=dataloader, scale=False, return_pred=plot)
-            if plot:
+                dataloader=dataloader, scale=False, return_pred=return_pred)
+            if return_pred:  # TODO: Dopisz opcje gdy chcemy zapisac predykcje
                 scores, preds = scores
                 preds = self.preds_to_df(
                     dataloader, preds.numpy(), return_quantiles=True)
@@ -172,31 +181,40 @@ class AnomalyDetector:
                     scores=scores, classes=classes, path=save_scores_path)
         pred_cls = self.fit_thresholder(
             scores=np.array(scores), classes=np.array(classes),
-            scale_scores=scale_scores,  # class_weight=class_weight,
-            f_score_beta=f_score_beta)
+            scale_scores=scale_scores, dataset=dataloader.dataset
+            # f_score_beta=f_score_beta
+        )
 
         self.save_stats(
             true_cls=classes, pred_cls=pred_cls, wdd_t_max=wdd_t_max,
-            wdd_w_f=wdd_w_f, wdd_ma_f=wdd_ma_f, dataloader=dataloader,
+            wdd_w_f=wdd_w_f, wdd_ma_f=wdd_ma_f, dataset=dataloader.dataset,
+            ds_name=ds_name, model_train_date=model_train_date,
             f_score_beta=f_score_beta
         )
 
-        if plot:
-            scores_df = self._get_scores_dataset(
-                scores=np.array(scores), true_cls=np.array(classes),
-                dataset=dataloader.dataset)
+        if plot_preds or plot_scores:
+            if not plot_preds:
+                preds = None
+            if plot_scores:
+                scores_df = self._get_scores_dataset(
+                    scores=np.array(scores), true_cls=np.array(classes),
+                    dataset=dataloader.dataset)
+            else:
+                scores_df = None
             self.plot_preds_and_anomalies(
                 dataloader=dataloader, preds=preds,
                 classes=np.array(classes), pred_cls=pred_cls,
                 scaler=ts_scaler, save_html_path=save_html_path,
                 start_pos=start_plot_pos, end_pos=end_plot_pos,
-                scores_df=scores_df
+                scores_df=scores_df, ds_name=ds_name
             )
 
     def save_stats(
         self, true_cls: List[Literal[0, 1]], pred_cls: List[Literal[0, 1]],
         wdd_t_max: int, wdd_w_f: float, wdd_ma_f: float,
-        dataloader: int, f_score_beta: float = 0.5
+        dataset: MultiTimeSeriesDataset, ds_name: str,
+        model_train_date: str, f_score_beta: float = 0.5,
+        path: str = './fit_detector.json'
     ):
         m_name = self.model.__class__.__name__
         m_params = self.model.params
@@ -205,25 +223,45 @@ class AnomalyDetector:
             true_cls, pred_cls, beta=f_score_beta, average='macro')
         print("F_%.2f_score: %.3f" % (f_score_beta, f_score))
         if wdd_t_max is not None and wdd_w_f is not None:
-            wdd = dataloader.dataset.calculate_wdd(
+            wdd = dataset.calculate_rec_wdd(
                 pred_rec_cls=pred_cls, true_rec_cls=true_cls,
                 t_max=wdd_t_max, w_f=wdd_w_f, ma_f=wdd_ma_f
             )
             print("WDD score (t_max=%d, wf=%.3f, ma=%.3f): %.3f" %
                   (wdd_t_max, wdd_w_f, wdd_ma_f, wdd))
-        row = [m_name, m_params, f_score_beta, f_score, wdd]
-        with open('./saved_experiments/fit_detector.csv', 'a') as file:
-            writer = csv.writer(file)
-            writer.writerow(row)
+        cm = confusion_matrix(true_cls, pred_cls)
+        scores = {
+            'cm': cm.tolist(),
+            f'F_{f_score_beta}_score': f_score,
+            f'WDD_tmax{wdd_t_max}_wf{wdd_w_f}_ma{wdd_ma_f}': wdd
+        }
+        row = dict(
+            dataset=ds_name, model=m_name, train_date=model_train_date,
+            params=m_params, scores=scores)
+
+        if not os.path.exists(path) or os.stat(path).st_size < 2:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                f.write('[]')
+        with open(path, 'r') as f:
+            file_content = json.load(f)
+        file_content.append(row)
+        with open(path, 'w') as f:
+            json.dump(file_content, f)
+        # with open('./fit_detector.csv', 'a') as file:
+        #     writer = csv.writer(file)
+        #     writer.writerow(row)
 
     def plot_preds_and_anomalies(
         self,
-        dataloader: MultiTimeSeriesDataloader, preds: pd.DataFrame,
+        dataloader: MultiTimeSeriesDataloader,
         classes: np.ndarray, pred_cls: np.ndarray,
         scaler: TransformerMixin = None,
         save_html_path: Path = None,
         start_pos=None, end_pos=None,
-        scores_df: pd.DataFrame = None
+        preds: pd.DataFrame = None,
+        scores_df: pd.DataFrame = None,
+        ds_name: str = ''
     ):
 
         pred_anom_ids = np.argwhere(pred_cls == 1)
@@ -236,16 +274,20 @@ class AnomalyDetector:
         pred_anom_intervals = self._get_ids_ranges(pred_anom_ids)
         true_anom_intervals = self._get_ids_ranges(true_anom_ids)
 
+        if preds is not None:
+            preds = preds.iloc[start_pos:end_pos]
+
         plot_anomalies(
             time_series=pd.concat(
                 dataloader.dataset.sequences
             ).iloc[start_pos:end_pos],
-            predictions=preds.iloc[start_pos:end_pos],
+            predictions=preds,
             pred_anomalies_intervals=pred_anom_intervals,
             true_anomalies_intervals=true_anom_intervals,
             scaler=scaler, is_ae=issubclass(type(self), Reconstructor),
-            title='Anomaly detection results', file_path=save_html_path,
-            scores_df=scores_df
+            title='Anomaly detection on "%s"' % ds_name,
+            file_path=save_html_path, scores_df=scores_df,
+            model_name=self.model.__class__.__name__
         )
 
     def _get_scores_dataset(
@@ -258,7 +300,7 @@ class AnomalyDetector:
             scores = np.expand_dims(scores, axis=1)
         true_cls = np.expand_dims(true_cls, axis=1)
         data = np.concatenate([scores, true_cls], axis=1)
-        columns = [str(i) for i in range(scores.shape[1])] + ['class']
+        columns = self.score_names + ['class']
         df = pd.DataFrame(data, columns=columns, index=ids)
         return df
 
@@ -348,7 +390,8 @@ class AnomalyDetector:
             pred_anomalies_intervals=n_anom_intervals,
             true_anomalies_intervals=None,
             scaler=scaler, is_ae=issubclass(type(self), Reconstructor),
-            title='Normal data', file_path=n_html_path
+            title='Normal data', file_path=n_html_path,
+            model_name=self.model.__class__.__name__
         )
         plot_anomalies(
             time_series=pd.concat(anomaly_data.dataset.sequences),
@@ -356,7 +399,8 @@ class AnomalyDetector:
             pred_anomalies_intervals=a_anom_intervals,
             true_anomalies_intervals=None,
             scaler=scaler, is_ae=issubclass(type(self), Reconstructor),
-            title='Anomaly data', file_path=a_html_path
+            title='Anomaly data', file_path=a_html_path,
+            model_name=self.model.__class__.__name__
         )
 
     def _get_ids_ranges(
@@ -431,7 +475,11 @@ class AnomalyDetector:
         self,
         scores: np.ndarray,
         classes: np.ndarray,
+        dataset: MultiTimeSeriesDataset,
         scale_scores: bool = False,
+        wdd_t_max: int = None,
+        wdd_w_f: float = None,
+        wdd_ma_f: float = 0,
         # class_weight: Dict = {0: 0.75, 1: 0.25},
         f_score_beta: float = 0.5
     ) -> np.ndarray:
@@ -446,7 +494,14 @@ class AnomalyDetector:
             scores[np.where(classes == 1)] = a_scores
 
         # fitting thresholder
-        scorer = make_scorer(fbeta_score, beta=f_score_beta, average='macro')
+        # scorer = make_scorer(fbeta_score, beta=f_score_beta, average='macro')
+        if wdd_t_max is not None and wdd_w_f is not None:
+            scorer = make_scorer(
+                dataset.calculate_rec_wdd, t_max=wdd_t_max,
+                w_f=wdd_w_f, ma_f=wdd_ma_f)
+        else:
+            scorer = make_scorer(
+                fbeta_score, beta=f_score_beta, average='macro')
         gs = GridSearchCV(LogisticRegression(), param_grid={'class_weight': [
             {0.6, 0.4}, {0.7, 0.3}, {0.8, 0.2}, {0.9, 0.1}]},
             scoring=scorer)
@@ -455,6 +510,7 @@ class AnomalyDetector:
         pred_cls = self.thresholder.predict(scores)
 
         # printing classification results
+        print("Model %s" % self.model.__class__.__name__)
         cm = confusion_matrix(classes, pred_cls)
         print('Best class weights: %s' % str(self.thresholder.class_weight))
         print(cm)
