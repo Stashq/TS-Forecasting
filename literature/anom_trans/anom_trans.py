@@ -98,6 +98,11 @@ class AnomalyTransformer(nn.Module):
         n_layers: int, lambda_: float
     ):
         super().__init__()
+        self.params = {
+            'c_in': c_in, 'window_size': window_size,
+            'd_model': d_model, 'n_layers': n_layers,
+            'lambda_': lambda_
+        }
         self.N = window_size
         self.d_model = d_model
         self.lambda_ = lambda_

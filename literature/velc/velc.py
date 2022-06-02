@@ -56,7 +56,11 @@ class VELC(nn.Module):
         z_size: int, N_constraint: int, threshold: float
     ):
         super(VELC, self).__init__()
-
+        self.params = {
+            'c_in': c_in, 'window_size': window_size, 'h_size': h_size,
+            'n_layers': n_layers, 'z_size': z_size,
+            'N_constraint': N_constraint, 'threshold': threshold
+        }
         self.encoder = LSTMEncoder(
             x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.z_mu_dense = nn.Linear(z_size, z_size)

@@ -39,6 +39,12 @@ class DAGMM(nn.Module):
         n_layers: int, n_gmm: int, est_h_size: int, est_dropout_p: int
     ):
         super(DAGMM, self).__init__()
+        self.params = {
+            'c_in': c_in, 'window_size': window_size, 'h_size': h_size,
+            'n_layers': n_layers, 'z_c_size': z_c_size, 'n_gmm': n_gmm,
+            'est_h_size': est_h_size, 'est_dropout_p': est_dropout_p
+        }
+        
         self.compression_net = LSTMAE(
             c_in=c_in, h_size=h_size, z_size=z_c_size,
             n_layers=n_layers, pass_last_h_state=True)

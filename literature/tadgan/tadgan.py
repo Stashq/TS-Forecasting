@@ -45,8 +45,13 @@ class TADGAN(nn.Module):
         pretrained_encoder: nn.Module = None,
         pretrained_decoder: nn.Module = None
     ):
-        self.z_size = z_size
         super(TADGAN, self).__init__()
+        self.z_size = z_size
+        self.params = {
+            'c_in': c_in, 'window_size': window_size, 'h_size': h_size,
+            'n_layers': n_layers, 'z_size': z_size
+        }
+
         self.encoder = LSTMEncoder(
             x_size=c_in, h_size=h_size, n_layers=n_layers, emb_size=z_size)
         self.decoder = LSTMDecoder(
