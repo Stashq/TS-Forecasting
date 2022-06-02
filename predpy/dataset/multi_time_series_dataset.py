@@ -396,13 +396,70 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         else:
             return 1
 
-    def calculate_wdd(
+    def calculate_rec_wdd(
         self, pred_rec_cls: List[int],
         true_rec_cls: List[int], t_max: int, w_f: float, ma_f: float = 0
     ) -> float:
         """Calculate WDD score from article
         'Evaluation metrics for anomaly detection algorithms in time-series'
         based on gaussian distribution function.
+        Compares distance between records in time series.
+
+        Args:
+            pred_rec_cls (List[int]): predicted records classes.
+            true_rec_cls (List[int]): true records classes.
+            t_max (int): maximum distance between paired
+                predicted and true anomaly position.
+            w_f (float): false anomaly detenction penalty.
+            ma_f (float, optional): missed anomaly penalty. Defaults to 0.
+
+        Returns:
+            float: wdd score.
+        """
+        ids = self.get_labels().index
+        cls_df = pd.DataFrame(zip(
+            true_rec_cls, pred_rec_cls
+        ), index=ids, columns=['true_cls', 'pred_cls'])
+        nd = scipy.stats.norm(loc=0, scale=t_max)
+
+        def score(row):
+            # calculate w
+            if row['true_cls'] == 1:
+                idx = row.name
+                frame = cls_df.loc[idx-t_max:idx+t_max]
+                preds = frame[frame['pred_cls'] == 1]
+                # missed anomaly penalty
+                if preds.shape[0] == 0:
+                    return -ma_f
+                else:
+                    diff = abs(preds.index - idx).min()
+                    return nd.pdf(diff)
+            # find FA
+            elif row['pred_cls'] == 1:
+                idx = row.name
+                frame = cls_df.loc[idx-t_max:idx+t_max]
+                preds = frame[frame['true_cls'] == 1]
+                # detected anomaly (DA)
+                if preds.shape[0] > 0:
+                    return 0
+                # false anomaly penalty
+                else:
+                    return -w_f
+            else:
+                return 0
+        scores = cls_df.apply(score, axis=1)
+        wdd = scores.sum()
+
+        return wdd
+
+    def calculate_point_wdd(
+        self, pred_rec_cls: List[int],
+        true_rec_cls: List[int], t_max: int, w_f: float, ma_f: float = 0
+    ) -> float:
+        """Calculate WDD score from article
+        'Evaluation metrics for anomaly detection algorithms in time-series'
+        based on gaussian distribution function.
+        Compares distance between points in time series.
 
         Args:
             pred_rec_cls (List[int]): predicted records classes.
