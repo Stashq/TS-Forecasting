@@ -4,7 +4,7 @@ import torch
 from torch.autograd import Variable
 
 from predpy.wrapper import Reconstructor
-from literature.anomaly_detector_base import AnomalyDetector
+from anomaly_detection.anomaly_detector_base import AnomalyDetector
 from .tadgan import TADGAN
 
 
@@ -21,7 +21,7 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         warmup_epochs: int = 0,
         alpha: float = 0.5
     ):
-        AnomalyDetector.__init__(self)
+        AnomalyDetector.__init__(self, score_names=['norm1_x', 'criterion_x'])
         Reconstructor.__init__(
             self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
@@ -208,14 +208,14 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         batch_size = x.size(0)
         with torch.no_grad():
             x_hat = self.model(x)
-            loss_mse = torch.linalg.norm(
+            norm1_x = torch.linalg.norm(
                 (x - x_hat).reshape(batch_size, -1), ord=1, dim=1)
-            loss_x = self.model.critic_x(x_hat).squeeze()
+            critic_x = self.model.critic_x(x_hat).squeeze()
             # score = self.alpha * loss_mse
             # + (1 - self.alpha) * loss_x.squeeze()
 
         # score = score.tolist()
-        score = torch.stack([loss_mse, loss_x], dim=1).tolist()
+        score = torch.stack([norm1_x, critic_x], dim=1).tolist()
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:

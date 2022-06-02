@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from .anom_trans import AnomalyTransformer
 from predpy.wrapper import Reconstructor
-from literature.anomaly_detector_base import AnomalyDetector
+from anomaly_detection.anomaly_detector_base import AnomalyDetector
 
 
 class ATWrapper(Reconstructor, AnomalyDetector):
@@ -21,7 +21,7 @@ class ATWrapper(Reconstructor, AnomalyDetector):
         params_to_train: Generator[Parameter, None, None] = None,
         scores_names: List[str] = ['xd_max', 'xd_l2', 's_max', 's_mean']
     ):
-        AnomalyDetector.__init__(self)
+        AnomalyDetector.__init__(self, score_names=scores_names)
         Reconstructor.__init__(
             self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,

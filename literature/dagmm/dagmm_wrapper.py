@@ -1,13 +1,15 @@
 import torch
 from torch import nn, optim
 from torch.nn.parameter import Parameter
-from typing import Dict, Generator, List
+from typing import Dict, Generator, List, Union, Tuple
+
+from anomaly_detection.anomaly_detector_base import AnomalyDetector
 
 from .dagmm import DAGMM
 from predpy.wrapper import Reconstructor
 
 
-class DAGMMWrapper(Reconstructor):
+class DAGMMWrapper(Reconstructor, AnomalyDetector):
     def __init__(
         self,
         model: DAGMM = nn.Module(),
@@ -20,8 +22,9 @@ class DAGMMWrapper(Reconstructor):
         lambda_energy: float = 0.1,
         lambda_cov_diag: float = 0.005
     ):
-        super(DAGMMWrapper, self).__init__(
-            model=model, lr=lr, criterion=criterion,
+        AnomalyDetector.__init__(self, score_names=[])
+        Reconstructor.__init__(
+            self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
             optimizer_kwargs=optimizer_kwargs,
             target_cols_ids=target_cols_ids,
@@ -61,3 +64,8 @@ class DAGMMWrapper(Reconstructor):
         with torch.no_grad():
             x_hat, _, _, _ = self.model(x)
             return x_hat
+
+    def anomaly_score(
+        self, x, scale: bool = True, return_pred: bool = False
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
+        pass

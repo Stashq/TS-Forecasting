@@ -5,7 +5,7 @@ from torch.nn.parameter import Parameter
 from sklearn.preprocessing import MinMaxScaler
 # from pathlib import Path
 
-from literature.anomaly_detector_base import AnomalyDetector
+from anomaly_detection.anomaly_detector_base import AnomalyDetector
 from predpy.wrapper import Reconstructor
 # from predpy.data_module.multi_time_series_module import (
 #     MultiTimeSeriesDataloader)
@@ -24,7 +24,7 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
         params_to_train: Generator[Parameter, None, None] = None,
         alpha: float = 0.5, beta: float = 0.5
     ):
-        AnomalyDetector.__init__(self)
+        AnomalyDetector.__init__(self, score_names=['norm1_x', 'norm1_z'])
         Reconstructor.__init__(
             self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
