@@ -8,7 +8,7 @@ from typing import Dict, Generator, List, Tuple, Union
 
 from models import LSTMEncoder, LSTMDecoder, ConvEncoder, ConvDecoder
 from predpy.wrapper import Reconstructor
-from literature.anomaly_detector_base import AnomalyDetector
+from anomaly_detection.anomaly_detector_base import AnomalyDetector
 
 
 class LSTMMVR(nn.Module):
@@ -54,12 +54,6 @@ class LSTMMVR(nn.Module):
                 next(self.l_norm.parameters()).device
             )
 
-        # x_hat2 = []
-        # for i in range(self.c_in):
-        #     x_i_hat2 = self.redecoder(
-        #         z[:, i*self.n_kernels:(i+1)*self.n_kernels, :])
-        #     x_hat2 += [x_i_hat2]
-        # x_hat2 = torch.concat(x_hat2, dim=-1)
         x_hat2 = self.redecoder(z, seq_len=seq_len)
 
         return x_hat1, x_hat2
@@ -79,6 +73,12 @@ class ConvMVR(nn.Module):
         lambda_: float = 0.1,
     ):
         super(ConvMVR, self).__init__()
+        self.params = dict(
+            window_size=window_size, c_in=c_in, n_kernels=n_kernels,
+            kernel_size=kernel_size, emb_size=emb_size, padding=padding,
+            stride=stride, lambda_=lambda_
+        )
+
         self.encoders = nn.ModuleList([
             ConvEncoder(
                 window_size=window_size, x_chanels=1, emb_chanels=n_kernels,
@@ -119,12 +119,6 @@ class ConvMVR(nn.Module):
                 next(self.l_norm.parameters()).device
             )
 
-        # x_hat2 = []
-        # for i in range(self.c_in):
-        #     x_i_hat2 = self.redecoder(
-        #         z[:, i*self.n_kernels:(i+1)*self.n_kernels, :])
-        #     x_hat2 += [x_i_hat2]
-        # x_hat2 = torch.concat(x_hat2, dim=-1)
         x_hat2 = self.redecoder(z)
 
         return x_hat1, x_hat2
@@ -140,8 +134,9 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
         params_to_train: Generator[Parameter, None, None] = None,
+        lambda_lr: float = 0.2
     ):
-        AnomalyDetector.__init__(self)
+        AnomalyDetector.__init__(self, score_names=['norm2_x1', 'norm2_x2'])
         Reconstructor.__init__(
             self, model=model, lr=lr, criterion=criterion,
             OptimizerClass=OptimizerClass,
@@ -149,6 +144,7 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
             target_cols_ids=target_cols_ids,
             params_to_train=params_to_train
         )
+        self.lambda_lr = lambda_lr
         self.mse = nn.MSELoss(reduction='none')
 
     def get_loss(self, x, x_hat):
@@ -159,7 +155,7 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
         x_hat1, x_hat2 = self.model(x)
         loss1 = self.get_loss(x, x_hat1)
         loss2 = self.get_loss(x, x_hat2)
-        loss = loss1 + 1e-5*loss2
+        loss = loss1 + self.lambda_lr*loss2
         return loss
 
     def predict(self, x):
@@ -173,11 +169,11 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
         with torch.no_grad():
             x_hat1, x_hat2 = self.model(x)
             # mse not including batch
-            score1 = torch.sum(
+            norm2_x1 = torch.sum(
                 torch.sum(torch.square(x - x_hat1), dim=-1), dim=-1)
-            score2 = torch.sum(
+            norm2_x2 = torch.sum(
                 torch.sum(torch.square(x - x_hat2), dim=-1), dim=-1)
-        score = torch.stack([score1, score2], dim=1).tolist()
+        score = torch.stack([norm2_x1, norm2_x2], dim=1).tolist()
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:
