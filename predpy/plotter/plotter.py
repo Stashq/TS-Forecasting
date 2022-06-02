@@ -15,6 +15,18 @@ from predpy.wrapper import Reconstructor
 
 PREDICTED_ANOMALIES_COLOR = '#9467bd'
 TRUE_ANOMALIES_COLOR = '#d62728'
+SERIES_COLORS = [
+    '#1f77b4',  # muted blue
+    '#ff7f0e',  # safety orange
+    '#2ca02c',  # cooked asparagus green
+    '#d62728',  # brick red
+    '#9467bd',  # muted purple
+    '#8c564b',  # chestnut brown
+    '#e377c2',  # raspberry yogurt pink
+    '#7f7f7f',  # middle gray
+    '#bcbd22',  # curry yellow-green
+    '#17becf'   # blue-teal
+]
 
 
 def plot_exp_predictions(
@@ -31,21 +43,26 @@ def plot_exp_predictions(
     are_ae = ms_params["WrapperCls"].apply(
         lambda x: issubclass(x, Reconstructor)
     ).tolist()
+
+    n_rows = exp.datasets_params.iloc[dataset_idx]['true_values'].shape[1]
+    fig = make_subplots(rows=n_rows, cols=1)
+    fig.update_layout(height=800 * n_rows, title_text=d_params.name_)
+
     plot_predictions(
+        fig=fig,
         predictions=exp.get_models_predictions(dataset_idx, models_ids),
         true_vals=d_params.true_values,
         models_names=models_names, scaler=d_params.scaler,
-        title=d_params.name_, are_ae=are_ae, file_path=file_path)
+        are_ae=are_ae, file_path=file_path)
 
 
 def plot_predictions(
+    fig,
     predictions: pd.DataFrame,
     true_vals: Union[pd.Series, pd.DataFrame],
     models_names: List[str],
     scaler: TransformerMixin = None,
     are_ae: List[bool] = None,
-    title: str = "Predictions",
-    n_rows: int = None,
     file_path: str = None,
     prevent_plot: bool = False
 ) -> go.Figure:
@@ -68,10 +85,6 @@ def plot_predictions(
         If type is string, chart will be saved to html file with provided
         path.
     """
-    if n_rows is None:
-        n_rows = true_vals.shape[1]
-    fig = make_subplots(rows=n_rows, cols=1)
-
     if scaler is not None:
         true_vals, predictions = _rescale_true_vals_and_preds(
             scaler=scaler, true_vals=true_vals, are_ae=are_ae,
@@ -87,8 +100,6 @@ def plot_predictions(
             )
         fig.update_xaxes(title_text='date', row=target_i+1, col=1)
         fig.update_yaxes(title_text=target_col, row=target_i+1, col=1)
-
-    fig.update_layout(height=800 * n_rows, title_text=title)
 
     if file_path is not None:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -115,19 +126,20 @@ def preds_and_true_vals_to_scatter_data(
         are_ae = [False]*len(predictions)
 
     data = ts_to_plotly_data(
-        true_vals, "true_vals", version, is_ae=False, target=target)
+        true_vals, name="true_vals", version=version, is_ae=False,
+        target=target, color=SERIES_COLORS[0])
 
     # if passed dataframe of many models predictions
     if "predictions" in predictions.columns:
         for i, (_, row) in enumerate(predictions.iterrows()):
             data += ts_to_plotly_data(
-                row["predictions"], models_names[i], version,
-                is_ae=are_ae[i], target=target)
+                row["predictions"], name=models_names[i], version=version,
+                is_ae=are_ae[i], target=target, color=SERIES_COLORS[i+1])
     # if passed dataframe of single model predictions
     else:
         data += ts_to_plotly_data(
-            predictions, models_names[0], version,
-            is_ae=are_ae[0], target=target)
+            predictions, name=models_names[0], version=version,
+            is_ae=are_ae[0], target=target, color=SERIES_COLORS[1])
     return data
 
 
@@ -158,7 +170,7 @@ def _rescale_true_vals_and_preds(
 # ==================================
 def ts_to_plotly_data(
     ts: Union[pd.Series, pd.DataFrame],
-    name: str,
+    name: str, color: str,
     version: str = "",
     set_gaps: bool = True,
     is_ae: bool = False,
@@ -169,15 +181,17 @@ def ts_to_plotly_data(
         ts = _set_gaps(ts)
 
     if is_boundries:
-        data = _boundries_to_scatters(ts, name=name, version=version)
+        data = _boundries_to_scatters(
+            ts, name=name, version=version, color=color)
     elif isinstance(ts, pd.Series):
-        data = _series_to_scatter(ts, name=name, version=version)
+        data = _series_to_scatter(
+            ts, name=name, version=version, color=color)
     elif isinstance(ts, pd.DataFrame) and is_ae:
         data = _reconstruction_quantiles_to_scatters(
-            ts, name=name, version=version, col_name=target)
+            ts, name=name, version=version, col_name=target, color=color)
     elif isinstance(ts, pd.DataFrame) and is_ae is False:
         data = _preds_to_scatters(
-            ts, name=name, version=version, target=target)
+            ts, name=name, version=version, target=target, color=color)
     return data
 
 
@@ -188,11 +202,12 @@ def _set_gaps(ts: Union[pd.Series, pd.DataFrame, List[pd.DataFrame]]):
 
 
 def _boundries_to_scatters(
-    boundries: pd.DataFrame, name: str = "Boundries", version: str = ""
+    boundries: pd.DataFrame, name: str = "Boundries", version: str = "",
+    color: str = SERIES_COLORS[1]
 ) -> List[go.Scatter]:
     group_id = np.random.randint(9999999999, size=1)[0]
     columns = set([col[:-6] for col in boundries.columns])
-    rgb = np.random.randint(256, size=3)
+    rgb = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
 
     data = []
     for col in columns:
@@ -221,22 +236,23 @@ def _boundries_to_scatters(
 
 
 def _series_to_scatter(
-    ts: pd.Series, name: str, version: str = ""
+    ts: pd.Series, name: str, version: str = "", color: str = SERIES_COLORS[0]
 ) -> List[go.Scatter]:
     return [go.Scatter(
         x=ts.index, y=ts, connectgaps=False,
-        name=name + version)]
+        name=name + version, line=dict(color=color))]
 
 
 def _reconstruction_quantiles_to_scatters(
-    ts: pd.Series, name: str, version: str = "", col_name: str = None
+    ts: pd.Series, name: str, version: str = "", col_name: str = None,
+    color: str = SERIES_COLORS[1]
 ) -> List[go.Scatter]:
     group_id = np.random.randint(9999999999, size=1)[0]
     if col_name is not None:
         columns = [col_name]
     else:
         columns = set([col[:-5] for col in ts.columns])
-    rgb = np.random.randint(256, size=3)
+    rgb = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
 
     # quantile: 50%
     data = [
@@ -302,7 +318,8 @@ def _reconstruction_quantiles_to_scatters(
 
 
 def _preds_to_scatters(
-    ts: pd.Series, name: str, version: str = "", target: str = None
+    ts: pd.Series, name: str, version: str = "", target: str = None,
+    color: str = SERIES_COLORS[1]
 ) -> List[go.Scatter]:
     columns = ts.columns.tolist()
     if target is not None:
@@ -313,7 +330,7 @@ def _preds_to_scatters(
         scatter_data += [
             go.Scatter(
                 x=ts.index, y=ts[col], connectgaps=False,
-                name=name + f"-{col}" + version)
+                name=name + f"-{col}" + version, line=dict(color=color))
         ]
     return scatter_data
 
@@ -693,15 +710,22 @@ def plot_anomalies(
     scores_df: pd.DataFrame = None,
     file_path: str = None
 ):
-    n_rows = time_series.shape[1]
+    n_rows = 0
+    if predictions is not None:
+        n_rows += time_series.shape[1]
     if scores_df is not None:
         n_rows += 1
-    fig = plot_predictions(
-        predictions=predictions, true_vals=time_series,
-        models_names=[model_name], scaler=scaler,
-        are_ae=[is_ae], title=title, prevent_plot=True,
-        n_rows=n_rows
-    )
+    fig = make_subplots(rows=n_rows, cols=1)
+    fig.update_layout(
+        height=800 * n_rows,
+        title_text=title)
+
+    # plotting
+    if predictions is not None:
+        plot_predictions(
+            fig, predictions=predictions, true_vals=time_series,
+            models_names=[model_name], scaler=scaler,
+            are_ae=[is_ae], prevent_plot=True)
     if scores_df is not None:
         _add_detection_scores(
             fig=fig, scores_df=scores_df, row_id=n_rows, col_id=1)
@@ -730,6 +754,7 @@ def _add_detection_scores(
 ):
     scatter_data = []
     for score_col in scores_df.columns:
+        group_id = str(np.random.randint(9999999999, size=1)[0])
         if score_col == 'class':
             continue
         scores_0 = scores_df[score_col][scores_df['class'] == 0]
@@ -737,11 +762,13 @@ def _add_detection_scores(
         scatter_data += [
             go.Scatter(
                 x=scores_0.index.tolist(), y=scores_0.tolist(),
-                name=str(score_col), mode='markers', marker=dict(
+                name=str(score_col), mode='markers', legendgroup=group_id,
+                legendgrouptitle_text=score_col, marker=dict(
                     color='green')),
             go.Scatter(
                 x=scores_1.index.tolist(), y=scores_1.tolist(),
-                name=str(score_col), mode='markers', marker=dict(
+                name=str(score_col), mode='markers', legendgroup=group_id,
+                marker=dict(
                     color='red')),
         ]
     for trace in scatter_data:
