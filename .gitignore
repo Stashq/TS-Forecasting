@@ -153,6 +153,7 @@ data/*
 notebooks/*
 !notebooks/*.ipynb
 
+notebook_a_scores
 pages
 tmp.csv
 fit_detector.csv

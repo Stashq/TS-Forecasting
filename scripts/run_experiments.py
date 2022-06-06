@@ -30,6 +30,9 @@ from literature.tadgan import TADGAN, TADGANWrapper
 from anomaly_detection.anomaly_detector_base import AnomalyDetector
 from models.ideas import LSTMMVR, ConvMVR, MVRWrapper
 from models import ConvAE, MultipleConvAE, ConvAEWrapper
+from anomaly_detection import (
+    AnomalyDetector, fit_run_detection, exp_fit_run_detection,
+    get_dataset, get_dataset_names)
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -46,16 +49,18 @@ from pathlib import Path
 
 # =============================================================================
 
-window_size = 200
+window_size = 100
 batch_size = 64
 
 c_in = 38
 c_out = 38
 topic = "Industry"
 collection_name = "ServerMachineDataset"
-dataset_name1 = "machine-1-1"
-dataset_name2 = "machine-1-2"
-dataset_name3 = "machine-1-3"
+# dataset_name1 = "machine-1-1"
+# dataset_name2 = "machine-1-2"
+# dataset_name3 = "machine-1-3"
+# ds_names = os.listdir(f'./data/{topic}/{collection_name}/train')
+ds_names = ["machine-1-1.csv"]  # , "machine-1-2.csv", "machine-1-3.csv"]
 
 # c_in = 1
 # c_out = 1
@@ -75,7 +80,7 @@ detect_anomalies_pipeline = []
 
 datasets_params = [
     DatasetParams(
-        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/%s/%s/train/%s.csv" % (topic, collection_name, dataset_name1),
+        path="/home/stachu/Projects/Anomaly_detection/TSAD/data/%s/%s/train/%s.csv" % (topic, collection_name, ds_name[:-4]),
         load_params=load_params,
         target=[str(i) for i in range(c_in)],
         split_proportions=[0.8, 0.1, 0.1],
@@ -84,38 +89,23 @@ datasets_params = [
         drop_refill_pipeline=drop_refill_pipeline,
         preprocessing_pipeline=preprocessing_pipeline,
         detect_anomalies_pipeline=detect_anomalies_pipeline,
-        scaler=StandardScaler()),
-    # DatasetParams(
-    #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/%s/%s/train/%s.csv" % (topic, collection_name, dataset_name2),
-    #     load_params=load_params,
-    #     target=[str(i) for i in range(c_in)],
-    #     split_proportions=[0.8, 0.1, 0.1],
-    #     window_size=window_size,
-    #     batch_size=batch_size,
-    #     drop_refill_pipeline=drop_refill_pipeline,
-    #     preprocessing_pipeline=preprocessing_pipeline,
-    #     detect_anomalies_pipeline=detect_anomalies_pipeline,
-    #     scaler=StandardScaler()),
-    # DatasetParams(
-    #     path="/home/stachu/Projects/Anomaly_detection/TSAD/data/%s/%s/train/%s.csv"\
-    #         % (topic, collection_name, dataset_name3),
-    #     load_params=load_params,
-    #     target=[str(i) for i in range(c_in)],
-    #     split_proportions=[0.8, 0.1, 0.1],
-    #     window_size=window_size,
-    #     batch_size=batch_size,
-    #     drop_refill_pipeline=drop_refill_pipeline,
-    #     preprocessing_pipeline=preprocessing_pipeline,
-    #     detect_anomalies_pipeline=detect_anomalies_pipeline,
-    #     scaler=StandardScaler()),
+        scaler=StandardScaler())
+    for ds_name in ds_names
 ]
 
 models_params = [
+    # ModelParams(
+    #     name_="VELC_h8_l1_z4_C50_th50", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=8, n_layers=1, z_size=4,
+    #         N_constraint=50, threshold=50),
+    #     WrapperCls=VELCWrapper
+    # ),
     # # h_size = 50
     # ModelParams(
-    #     name_="TadGAN_h50_l1_z5_g1d1_warm0", cls_=TADGAN,
+    #     name_="TadGAN_h.....", cls_=TADGAN,
     #     init_params=dict(
-    #         window_size=window_size, c_in=c_in, h_size=50, n_layers=1, z_size=5),
+    #         window_size=window_size, c_in=c_in, h_size=100, n_layers=1, z_size=20),
     #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
     #         gen_dis_train_loops=(1, 1), warmup_epochs=0)
     # ),
@@ -191,10 +181,10 @@ models_params = [
     #         lambda_=0.5),
     #     WrapperCls=ATWrapper),
     # ModelParams(
-    #     name_="AnomTrans_l2_d10_l2", cls_=AnomalyTransformer,
+    #     name_="AnomTrans_l3_d512_lambda3", cls_=AnomalyTransformer,
     #     init_params=dict(
-    #         window_size=window_size, c_in=c_in, d_model=10, n_layers=2,
-    #         lambda_=0.5),
+    #         window_size=window_size, c_in=c_in, d_model=512, n_layers=3,
+    #         lambda_=3),
     #     WrapperCls=ATWrapper),
 
     # # ModelParams(
@@ -204,34 +194,34 @@ models_params = [
     # #         n_layers=1),
     # #     WrapperCls=MVRWrapper
     # # ),
-    # ModelParams(
-    #     name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
-    #     init_params=dict(
-    #         window_size=window_size, c_in=c_in, n_kernels=10,
-    #         kernel_size=3, emb_size=50, lambda_=0.3),
-    #     WrapperCls=MVRWrapper
-    # ),
-    ModelParams(
-        name_=f'AE_ws{window_size}_nk10_ks3_es50', cls_=ConvAE,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, n_kernels=10,
-            kernel_size=3, emb_size=50),
-        WrapperCls=ConvAEWrapper
-    ),
-    ModelParams(
-        name_=f'MultipleConvAE_ws{window_size}_nk10_ks3_es50', cls_=MultipleConvAE,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, n_kernels=10,
-            kernel_size=3, emb_size=50),
-        WrapperCls=ConvAEWrapper
-    ),
     ModelParams(
         name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
         init_params=dict(
             window_size=window_size, c_in=c_in, n_kernels=10,
-            kernel_size=3, emb_size=50, lambda_=0.5),
+            kernel_size=3, emb_size=50, lambda_=0.3),
         WrapperCls=MVRWrapper
     ),
+    # ModelParams(
+    #     name_=f'AE_ws{window_size}_nk10_ks3_es50', cls_=ConvAE,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, n_kernels=10,
+    #         kernel_size=3, emb_size=50),
+    #     WrapperCls=ConvAEWrapper
+    # ),
+    # ModelParams(
+    #     name_=f'MultipleConvAE_ws{window_size}_nk10_ks3_es50', cls_=MultipleConvAE,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, n_kernels=10,
+    #         kernel_size=3, emb_size=50),
+    #     WrapperCls=ConvAEWrapper
+    # ),
+    # ModelParams(
+    #     name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, n_kernels=10,
+    #         kernel_size=3, emb_size=50, lambda_=0.5),
+    #     WrapperCls=MVRWrapper
+    # ),
     # ModelParams(
     #     name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
     #     init_params=dict(
@@ -246,9 +236,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=30, gpus=1, auto_lr_find=False)
+    max_epochs=10, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=5, min_delta=1e-2, verbose=True)
+    monitor='val_loss', patience=2, min_delta=1e-2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -260,18 +250,18 @@ exp = Experimentator(
     loggers_params=[LoggerParams(save_dir="./lightning_logs")]
 )
 
-exp = load_experimentator('./saved_experiments/2022-05-30_22:57:20.pkl')
+# exp = load_experimentator('./saved_experiments/2022-05-31_14:20:37.pkl')
 # exp = load_experimentator('./saved_experiments/2022-05-31_14:20:37.pkl')
 
 # exp = load_last_experimentator('./saved_experiments')
-# exp.run_experiments(
-#     experiments_path="./saved_experiments",
-#     safe=True,  # continue_run=True
-# )
-# plot_exp_predictions(
-#     exp, dataset_idx=0,
-#     file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name1, str(exp.exp_date))
-# )
+exp.run_experiments(
+    experiments_path="./saved_experiments",
+    safe=True, continue_run=True
+)
+plot_exp_predictions(
+    exp, dataset_idx=0,
+    # file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name1, str(exp.exp_date))
+)
 # plot_exp_predictions(
 #     exp, dataset_idx=1,
 #     file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name2, str(exp.exp_date))
@@ -282,146 +272,50 @@ exp = load_experimentator('./saved_experiments/2022-05-30_22:57:20.pkl')
 # )
 
 
-
-# # exp = load_experimentator('./saved_experiments/2022-05-25_20:31:39.pkl')
-# exp = load_last_experimentator('./saved_experiments')
-
 # m_id, ds_id = 0, 0
 # # plot_exp_predictions(
 # #     exp, dataset_idx=ds_id,
 # #     # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
 # # )
 
+# def powerset(list_):
+#     if len(list_) == 1:
+#         return [list_, []]
+#     power_list = powerset(list_[1:])
+#     len_ = len(power_list)
+#     res = power_list * 2
+#     for i in range(len_):
+#         res[i] = [list_[0]] + res[i]
+#     return res
 
-def get_dataset(
-    path: Path, window_size: int, ts_scaler: TransformerMixin = None
-) -> MultiTimeSeriesDataset:
-    df = pd.read_csv(
-        path, header=None
-    )
-    try:
-        df.columns = df.columns.astype(int)
-    except TypeError:
-        pass
-    if ts_scaler is not None:
-        df[:] = ts_scaler.transform(df)
-    dataset = MultiTimeSeriesDataset(
-        sequences=[df],
-        window_size=window_size,
-        target=df.columns.tolist()
-    )
-    return dataset
+# model = exp.load_pl_model(model_idx=11, dir_path='checkpoints/machine-1-1/AnomTrans_l2_d10_l2')
+# for score_names in powerset(['xd_max', 'xd_l2', 's_max', 's_mean'])[:-1]:
+#     print('\n', score_names)
+#     model.set_score_in_use(score_names)
+#     fit_run_detection(
+#         model, window_size=window_size, model_name='AnomTrans_l2_d10_l2',
+#         model_train_date=exp.exp_date, topic=topic, collection_name=collection_name,
+#         dataset_name=dataset_name1, load_rec_cls=True, load_preds=False,
+#         load_scores=True, save_preds=True, save_scores=True, min_points=3)
 
+# exp = load_experimentator('./saved_experiments/2022-06-02_11:13:09.pkl')
+# model = exp.load_pl_model(2, dir_path='checkpoints/machine-1-1/ConvMVR_ws200_nk10_ks3_es50')
+# fit_run_detection(
+#     model, window_size=window_size, model_name='ConvMVR_ws200_nk10_ks3_es50',
+#     model_train_date=exp.exp_date, topic=topic, collection_name=collection_name,
+#     dataset_name=dataset_name1, load_rec_cls=True, load_preds=False,
+#     load_scores=False, save_preds=False, save_scores=False, min_points=3)
 
-def get_dataset_names(path: str):
-    dir_names = path.split(os.sep)
-    start_id = dir_names.index('data')
-    topic = dir_names[start_id + 1]
-    collection_name = dir_names[start_id + 2]
-    dataset_name = dir_names[start_id + 4][:-4]
-    return topic, collection_name, dataset_name
+# model = exp.load_pl_model(model_idx=11, dir_path='checkpoints/machine-1-1/AnomTrans_l2_d10_l2')
+# fit_run_detection(
+#     model, window_size=window_size, model_name='AnomTrans_l2_d10_l2',
+#     model_train_date=exp.exp_date, topic=topic, collection_name=collection_name,
+#     dataset_name=dataset_name1, load_rec_cls=True, load_preds=False,
+#     load_scores=False, save_preds=False, save_scores=False, min_points=3)
 
-
-def exp_fit_run_detection(
-    exp: Experimentator, min_points: int = 3, safe: bool = True,
-    plot_preds: bool = False, plot_scores: bool = False,
-    save_preds: bool = False, save_scores: bool = False,
-    load_preds: bool = False, load_scores: bool = False,
-    save_cls: bool = False, load_cls: bool = False,
-    ds_ids: List[int] = None, m_ids: List[int] = None
-):
-    model_train_date = exp.exp_date
-    if ds_ids is None:
-        ds_ids = range(exp.datasets_params.shape[0])
-    if m_ids is None:
-        m_ids = range(exp.models_params.shape[0])
-
-    for ds_id in ds_ids:
-        topic, collection_name, dataset_name =\
-            get_dataset_names(
-                exp.datasets_params.iloc[ds_id]['path'])
-        
-        test_cls_path = './data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name)
-
-        dataset = get_dataset(
-            path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-            window_size=window_size, ts_scaler=exp.get_targets_scaler(ds_id))
-        data_classes = pd.read_csv(
-            test_cls_path, header=None)\
-            .iloc[:, 0].to_list()
-        # rec_classes = None
-        classes_path = './saved_scores_preds/%s/%s/%d.csv' % (collection_name, dataset_name, window_size)
-        if load_cls:
-            with open(classes_path, 'r') as f:
-                rec_classes = [row[0] for row in csv.reader(f)]
-        else:
-            rec_classes = dataset.get_recs_cls_by_data_cls(
-                data_classes, min_points=min_points)
-            if save_cls:
-                os.makedirs(os.path.dirname(classes_path), exist_ok=True)
-                with open(classes_path, 'w') as f:
-                    csv.writer(f).writerows(
-                        [[cls_] for cls_ in rec_classes]
-                    )
-
-        n_models = exp.models_params.shape[0]
-
-        for m_id in range(0, n_models):
-            model_name = exp.models_params.iloc[m_id]['name_']
-            try:
-                model = exp.load_pl_model(
-                    m_id, os.path.join('checkpoints', dataset_name, model_name))
-                
-                load_scores_path, save_scores_path = None, None
-                load_preds_path, save_preds_path = None, None
-                path_vars = (collection_name, dataset_name, model_name)
-                if load_preds:
-                    load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % path_vars
-                    if not os.path.exists(load_preds_path):
-                        print(f'File {load_preds_path} not exists.')
-                        load_preds_path = None
-                if load_scores:
-                    load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % path_vars
-                    if not os.path.exists(load_scores_path):
-                        print(f'File {load_scores_path} not exists.')
-                        load_scores_path = None
-                if save_preds:
-                    save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % path_vars
-                if save_scores:
-                    save_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % path_vars
-
-                model.fit_run_detection(
-                    window_size=window_size,
-                    test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-                    model_train_date=model_train_date,
-                    rec_classes=rec_classes,
-                    test_cls_path=test_cls_path,
-                    min_points=min_points, scale_scores=True,  # class_weight=class_weight,
-                    ts_scaler=exp.get_targets_scaler(ds_id),
-                    load_scores_path=load_scores_path,
-                    save_scores_path=save_scores_path,
-                    load_preds_path=load_preds_path,
-                    save_preds_path=save_preds_path,
-                    plot_preds=plot_preds,  # start_plot_pos=15000, end_plot_pos=21000,
-                    plot_scores=plot_scores,
-                    save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name),
-                    f_score_beta=0.5,
-                    wdd_t_max=window_size/2,
-                    wdd_w_f=0.0005,
-                    wdd_ma_f=0.0005
-                )
-            except Exception as e:
-                if safe:
-                    print('Problem with fit_run_detection on model "%s": %s.'\
-                        % (model_name, str(e.args)))
-                else:
-                    raise e
-
-
-exp_fit_run_detection(
-    exp, min_points=3, safe=False, plot_preds=False, plot_scores=False,
-    load_preds=True, load_scores=True,
-    save_preds=True, save_scores=True,
-    load_cls=True
-    # save_preds=True, save_scores=True
-)
+# exp_fit_run_detection(
+#     exp, safe=False, plot_preds=False, plot_scores=False,
+#     load_preds=True, load_scores=True,
+#     save_preds=True, save_scores=True,
+#     load_cls=False, save_cls=True
+# )

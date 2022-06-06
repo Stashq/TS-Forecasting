@@ -5,7 +5,6 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 import os
-import re
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from string import Template
@@ -22,17 +21,10 @@ from sklearn.model_selection import GridSearchCV
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies
 from predpy.wrapper import Reconstructor
+from .data_loading import load_anom_scores
 
 UNKNOWN_TYPE_MSG = Template("Unknown data type $data_type.\
 Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
-
-
-def _str_to_float_list(text: str) -> List[float]:
-    floats = re.findall(r'\d+.\d+', text)
-    res = []
-    for f in floats:
-        res += [float(f)]
-    return res
 
 
 def get_dataset(
@@ -60,6 +52,7 @@ class AnomalyDetector:
         self, score_names: List[str] = None
     ):
         self.score_names = score_names
+        self.scores_in_use = score_names
         self.thresholder = LogisticRegression()
         self.scores_scaler = MinMaxScaler()
 
@@ -68,6 +61,9 @@ class AnomalyDetector:
         self, x, scale: bool = True, return_pred: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         pass
+
+    def set_score_in_use(self, score_names: List[str]):
+        self.scores_in_use = score_names
 
     def fit_run_detection(
         self, test_path: Path,
@@ -160,14 +156,14 @@ class AnomalyDetector:
         assert classes is not None or load_scores_path is not None,\
             'Classes can not be None. Pass it or load from file.'
         if load_scores_path is not None:
-            scores, classes = self.load_anom_scores(load_scores_path)
+            scores, classes = load_anom_scores(load_scores_path)
             if load_preds_path is not None:
                 preds = pd.read_csv(load_preds_path)
         else:
             return_pred = plot_preds or save_preds_path is not None
             scores = self.score_dataset(
                 dataloader=dataloader, scale=False, return_pred=return_pred)
-            if return_pred:  # TODO: Dopisz opcje gdy chcemy zapisac predykcje
+            if return_pred:
                 scores, preds = scores
                 preds = self.preds_to_df(
                     dataloader, preds.numpy(), return_quantiles=True)
@@ -318,7 +314,7 @@ class AnomalyDetector:
     ):
         self.eval()
         if load_path is not None:
-            scores, classes = self.load_anom_scores(load_path)
+            scores, classes = load_anom_scores(load_path)
         else:
             n_scores = self.score_dataset(
                 dataloader=normal_data, scale=False, return_pred=plot)
@@ -444,18 +440,6 @@ class AnomalyDetector:
 
         return ranges
 
-    def load_anom_scores(
-        self, path: Path
-    ) -> Tuple[List[float], List[int]]:
-        with open(path, 'r') as f:
-            reader = csv.DictReader(f)
-            scores = []
-            classes = []
-            for row in reader:
-                scores += [_str_to_float_list(row['score'])]
-                classes += [int(row['class'])]
-        return scores, classes
-
     def save_anom_scores(
         self,
         scores: List,
@@ -494,28 +478,35 @@ class AnomalyDetector:
             scores[np.where(classes == 1)] = a_scores
 
         # fitting thresholder
-        # scorer = make_scorer(fbeta_score, beta=f_score_beta, average='macro')
-        if wdd_t_max is not None and wdd_w_f is not None:
-            scorer = make_scorer(
-                dataset.calculate_rec_wdd, t_max=wdd_t_max,
-                w_f=wdd_w_f, ma_f=wdd_ma_f)
-        else:
-            scorer = make_scorer(
-                fbeta_score, beta=f_score_beta, average='macro')
+        scorer = make_scorer(fbeta_score, beta=f_score_beta, average='binary')
+        # cols_ids = self._get_used_scores_cols_ids()
+        # if wdd_t_max is not None and wdd_w_f is not None:
+        #     scorer = make_scorer(
+        #         dataset.calculate_rec_wdd, t_max=wdd_t_max,
+        #         w_f=wdd_w_f, ma_f=wdd_ma_f)
+        # else:
+        #     scorer = make_scorer(
+        #         fbeta_score, beta=f_score_beta, average='macro')
         gs = GridSearchCV(LogisticRegression(), param_grid={'class_weight': [
             {0.6, 0.4}, {0.7, 0.3}, {0.8, 0.2}, {0.9, 0.1}]},
             scoring=scorer)
-        gs.fit(scores, classes)
+        # train_scores = scores[:, cols_ids]
+        train_scores = scores
+        gs.fit(train_scores, classes)
         self.thresholder = gs.best_estimator_
-        pred_cls = self.thresholder.predict(scores)
+        pred_cls = self.thresholder.predict(train_scores)
 
         # printing classification results
-        print("Model %s" % self.model.__class__.__name__)
         cm = confusion_matrix(classes, pred_cls)
+        print("Model %s" % self.model.__class__.__name__)
         print('Best class weights: %s' % str(self.thresholder.class_weight))
         print(cm)
 
         return pred_cls
+
+    def _get_used_scores_cols_ids(self) -> List[int]:
+        cols_ids = [self.score_names.index(col) for col in self.scores_in_use]
+        return cols_ids
 
     def score_dataset(
         self, dataloader: MultiTimeSeriesDataloader,

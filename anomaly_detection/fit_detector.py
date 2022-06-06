@@ -28,7 +28,7 @@ def exp_fit_run_detection(
         topic, collection_name, dataset_name =\
             get_dataset_names(
                 exp.datasets_params.iloc[ds_id]['path'])
-        test_cls_path = './data/%s/%s/test_label/%s.csv'\
+        test_point_cls_path = './data/%s/%s/test_label/%s.csv'\
             % (topic, collection_name, dataset_name)
 
         dataset = get_dataset(
@@ -36,14 +36,11 @@ def exp_fit_run_detection(
             % (topic, collection_name, dataset_name),
             window_size=window_size, ts_scaler=exp.get_targets_scaler(ds_id))
         data_classes = pd.read_csv(
-            test_cls_path, header=None)\
+            test_point_cls_path, header=None)\
             .iloc[:, 0].to_list()
         classes_path = './saved_scores_preds/%s/%s/record_classes/%d.csv'\
             % (collection_name, dataset_name, window_size)
-        if load_cls:
-            with open(classes_path, 'r') as f:
-                rec_classes = [row[0] for row in csv.reader(f)]
-        else:
+        if not load_cls:
             rec_classes = dataset.get_recs_cls_by_data_cls(
                 data_classes, min_points=min_points)
             if save_cls:
@@ -68,7 +65,9 @@ def exp_fit_run_detection(
                     model_train_date=model_train_date,
                     topic=topic, collection_name=collection_name,
                     dataset_name=dataset_name, rec_classes=rec_classes,
-                    test_cls_path=test_cls_path, min_points=min_points,
+                    load_rec_cls=load_cls,
+                    test_point_cls_path=test_point_cls_path,
+                    min_points=min_points,
                     ts_scaler=exp.get_targets_scaler(ds_id),
                     plot_preds=plot_preds, plot_scores=plot_scores,
                     save_preds=save_preds, save_scores=save_scores,
@@ -87,7 +86,8 @@ def fit_run_detection(
     model: AnomalyDetector, window_size: int,
     model_name: str, model_train_date: str,
     topic: str, collection_name: str, dataset_name: str,
-    rec_classes: List[int] = None, test_cls_path: str = None,
+    rec_classes: List[int] = None, load_rec_cls: bool = False,
+    test_point_cls_path: str = None,
     min_points: int = 1, ts_scaler: TransformerMixin = None,
     plot_preds: bool = False, plot_scores: bool = False,
     save_preds: bool = False, save_scores: bool = False,
@@ -113,6 +113,13 @@ def fit_run_detection(
     if save_scores:
         save_scores_path =\
             './saved_scores_preds/%s/%s/%s/anom_scores.csv' % path_vars
+    if load_rec_cls and rec_classes is None:
+        rec_cls_path = './saved_scores_preds/%s/%s/record_classes/%d.csv' % (
+            collection_name, dataset_name, window_size
+        )
+        if os.path.exists(rec_cls_path):
+            with open(rec_cls_path, 'r') as f:
+                rec_classes = [int(row[0]) for row in csv.reader(f)]
 
     model.fit_run_detection(
         window_size=window_size,
@@ -120,7 +127,7 @@ def fit_run_detection(
             topic, collection_name, dataset_name),
         model_train_date=model_train_date,
         rec_classes=rec_classes,
-        test_cls_path=test_cls_path,
+        test_cls_path=test_point_cls_path,
         min_points=min_points, scale_scores=True,
         ts_scaler=ts_scaler,
         load_scores_path=load_scores_path,
@@ -132,7 +139,7 @@ def fit_run_detection(
         save_html_path='./pages/%s/%s/%s.html' % (
             collection_name, dataset_name, model_name),
         f_score_beta=0.5,
-        wdd_t_max=window_size/2,
+        wdd_t_max=window_size,
         wdd_w_f=0.0005,
         wdd_ma_f=0.0005
     )

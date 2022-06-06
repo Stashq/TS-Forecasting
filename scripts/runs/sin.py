@@ -106,7 +106,7 @@ models_params = [
             window_size=window_size, c_in=c_in, d_model=5, n_layers=2,
             lambda_=0.5),
         WrapperCls=ATWrapper, wrapper_kwargs=dict(
-            scores_names=['xd_max', 'xd_l2', 's_max', 's_mean'])),
+            score_names=['xd_max', 'xd_l2', 's_max', 's_mean'])),
     ModelParams(
         name_=f"LSTMMVR_w{window_size}_h50_z10_l1", cls_=LSTMMVR,
         init_params=dict(

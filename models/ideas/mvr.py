@@ -169,11 +169,16 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
         with torch.no_grad():
             x_hat1, x_hat2 = self.model(x)
             # mse not including batch
+            # norm2_x1 = torch.sum(
+            #     torch.sum(torch.square(x - x_hat1), dim=-1), dim=-1)
+            # norm2_x2 = torch.sum(
+            #     torch.sum(torch.square(x - x_hat2), dim=-1), dim=-1)
             norm2_x1 = torch.sum(
-                torch.sum(torch.square(x - x_hat1), dim=-1), dim=-1)
+                torch.square(x - x_hat1), dim=1)
             norm2_x2 = torch.sum(
-                torch.sum(torch.square(x - x_hat2), dim=-1), dim=-1)
-        score = torch.stack([norm2_x1, norm2_x2], dim=1).tolist()
+                torch.square(x - x_hat2), dim=1)
+        # score = torch.stack([norm2_x1, norm2_x2], dim=1).tolist()
+        score = torch.concat([norm2_x1, norm2_x2], dim=1).tolist()
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:

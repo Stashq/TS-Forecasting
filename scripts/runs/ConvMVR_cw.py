@@ -218,7 +218,7 @@ model = exp.load_pl_model(
     m_id, os.path.join('checkpoints', dataset_name, model_name))
 
 class_weight = {0: 0.8, 1: 0.2}
-# model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
+# model.score_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
 model.fit_run_detection(
     window_size=window_size,
     test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
@@ -234,7 +234,7 @@ model.fit_run_detection(
     save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
 )
 
-# model.scores_names = ['s_max', 's_mean']
+# model.score_names = ['s_max', 's_mean']
 # model.fit_run_detection(
 #     window_size=window_size,
 #     test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
@@ -252,7 +252,7 @@ model.fit_run_detection(
 
 
 class_weight = {0: 0.9, 1: 0.1}
-# model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
+# model.score_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
 model.fit_run_detection(
     window_size=window_size,
     test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
@@ -269,7 +269,7 @@ model.fit_run_detection(
 )
 
 class_weight = {0: 0.95, 1: 0.05}
-# model.scores_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
+# model.score_names = ['xd_max', 'xd_l2', 's_max', 's_mean']
 model.fit_run_detection(
     window_size=window_size,
     test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
@@ -285,7 +285,7 @@ model.fit_run_detection(
     save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name)
 )
 
-# model.scores_names = ['s_max', 's_mean']
+# model.score_names = ['s_max', 's_mean']
 # model.fit_run_detection(
 #     window_size=window_size,
 #     test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
