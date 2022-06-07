@@ -749,6 +749,47 @@ def plot_anomalies(
     fig.show()
 
 
+def get_ids_ranges(
+    ids: List,
+    max_break: Union[int, timedelta] = None
+) -> Union[pd.Series, pd.DataFrame]:
+    if len(ids) == 0:
+        return []
+    ids = pd.Series(ids).sort_values()
+    diffs = ids.diff()
+
+    if max_break is None:
+        max_break = diffs.mode()[0]
+    elif isinstance(max_break, int):
+        time_step = diffs.mode()[0]
+        max_break *= time_step
+
+    splits = diffs[diffs > max_break].index
+    if splits.shape[0] == 0:
+        splitted_time_series = [ids]
+    else:
+        index = ids.index
+        splitted_time_series = [
+            ids.iloc[:index.get_loc(splits[0])]
+        ]
+        splitted_time_series += [
+            ids.iloc[
+                index.get_loc(splits[i]):index.get_loc(splits[i+1])]
+            for i in range(len(splits)-1)
+        ]
+        splitted_time_series += [
+            ids.iloc[
+                index.get_loc(splits[-1]):]
+        ]
+
+    ranges = [
+        (ts.iloc[0], ts.iloc[-1])
+        for ts in splitted_time_series
+    ]
+
+    return ranges
+
+
 def _add_detection_scores(
     fig, scores_df: pd.DataFrame, row_id: int, col_id: int = 1
 ):

@@ -1,7 +1,6 @@
 from abc import abstractmethod
 import csv
 import json
-from datetime import timedelta
 import numpy as np
 import pandas as pd
 import os
@@ -19,7 +18,7 @@ from sklearn.metrics import fbeta_score
 from sklearn.model_selection import GridSearchCV
 
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
-from predpy.plotter.plotter import plot_anomalies
+from predpy.plotter.plotter import plot_anomalies, get_ids_ranges
 from predpy.wrapper import Reconstructor
 from .data_loading import load_anom_scores
 
@@ -267,8 +266,8 @@ class AnomalyDetector:
         true_anom_ids = dataloader.dataset.\
             get_data_ids_by_rec_ids(np.squeeze(true_anom_ids).tolist())
 
-        pred_anom_intervals = self._get_ids_ranges(pred_anom_ids)
-        true_anom_intervals = self._get_ids_ranges(true_anom_ids)
+        pred_anom_intervals = get_ids_ranges(pred_anom_ids)
+        true_anom_intervals = get_ids_ranges(true_anom_ids)
 
         if preds is not None:
             preds = preds.iloc[start_pos:end_pos]
@@ -372,8 +371,8 @@ class AnomalyDetector:
         a_pred_anom_ids = anomaly_data.dataset.\
             get_data_ids_by_rec_ids(np.squeeze(a_pred_anom_ids).tolist())
 
-        n_anom_intervals = self._get_ids_ranges(n_pred_anom_ids)
-        a_anom_intervals = self._get_ids_ranges(a_pred_anom_ids)
+        n_anom_intervals = get_ids_ranges(n_pred_anom_ids)
+        a_anom_intervals = get_ids_ranges(a_pred_anom_ids)
 
         if save_html_path is not None:
             n_html_path = save_html_path + '_normal'
@@ -398,47 +397,6 @@ class AnomalyDetector:
             title='Anomaly data', file_path=a_html_path,
             model_name=self.model.__class__.__name__
         )
-
-    def _get_ids_ranges(
-        self,
-        ids: List,
-        max_break: Union[int, timedelta] = None
-    ) -> Union[pd.Series, pd.DataFrame]:
-        if len(ids) == 0:
-            return []
-        ids = pd.Series(ids).sort_values()
-        diffs = ids.diff()
-
-        if max_break is None:
-            max_break = diffs.mode()[0]
-        elif isinstance(max_break, int):
-            time_step = diffs.mode()[0]
-            max_break *= time_step
-
-        splits = diffs[diffs > max_break].index
-        if splits.shape[0] == 0:
-            splitted_time_series = [ids]
-        else:
-            index = ids.index
-            splitted_time_series = [
-                ids.iloc[:index.get_loc(splits[0])]
-            ]
-            splitted_time_series += [
-                ids.iloc[
-                    index.get_loc(splits[i]):index.get_loc(splits[i+1])]
-                for i in range(len(splits)-1)
-            ]
-            splitted_time_series += [
-                ids.iloc[
-                    index.get_loc(splits[-1]):]
-            ]
-
-        ranges = [
-            (ts.iloc[0], ts.iloc[-1])
-            for ts in splitted_time_series
-        ]
-
-        return ranges
 
     def save_anom_scores(
         self,

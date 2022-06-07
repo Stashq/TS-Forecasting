@@ -161,7 +161,7 @@ class MVRWrapper(Reconstructor, AnomalyDetector):
     def predict(self, x):
         with torch.no_grad():
             x_hat1, x_hat2 = self.model(x)
-            return x_hat2
+            return x_hat1
 
     def anomaly_score(
         self, x, scale: bool = False, return_pred: bool = False
