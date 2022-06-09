@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from .anom_trans import AnomalyTransformer
 from predpy.wrapper import Reconstructor
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 
 
 class ATWrapper(Reconstructor, AnomalyDetector):
@@ -183,7 +183,7 @@ class ATWrapper(Reconstructor, AnomalyDetector):
 
         a_score = torch.mul(ad, norm)
         if return_only_a_score:
-            return a_score
+            return a_score.tolist()
 
         res_scores = self.get_selected_scores(
             self.score_names, x_diff, a_score)

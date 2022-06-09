@@ -27,7 +27,7 @@ from literature.anom_trans import AnomalyTransformer, ATWrapper
 from literature.velc import VELC, VELCWrapper
 from literature.dagmm import DAGMM, DAGMMWrapper
 from literature.tadgan import TADGAN, TADGANWrapper
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 from models.ideas import LSTMMVR, ConvMVR, MVRWrapper
 from models import ConvAE, MultipleConvAE, ConvAEWrapper
 from anomaly_detection import (

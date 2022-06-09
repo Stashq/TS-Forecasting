@@ -113,8 +113,10 @@ class VELC(nn.Module):
             re_z_dash, re_z_mu, re_z_log_sig)
 
     def anomaly_score(self, x, x_dash, z_dash, re_z_dash, alpha):
-        a1 = torch.linalg.norm(x, x_dash, dim=-1)
-        a2 = torch.linalg.norm(z_dash, re_z_dash, dim=-1)
+        batch_size = x.size()
+        a1 = torch.linalg.norm(
+            (x - x_dash).view(batch_size, -1), ord=1, dim=1)
+        a2 = torch.linalg.norm(
+            (z_dash - re_z_dash).view(batch_size, -1), ord=1, dim=1)
         a = alpha * a1 + (1 - alpha) * a2
-        a = torch.mean(a, dim=-1)
         return a

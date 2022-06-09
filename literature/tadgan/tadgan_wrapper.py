@@ -1,10 +1,13 @@
+from sklearn.preprocessing import MinMaxScaler
 from torch import nn, optim
 from typing import Dict, List, Tuple, Literal, Union
 import torch
 from torch.autograd import Variable
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from predpy.wrapper import Reconstructor
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 from .tadgan import TADGAN
 
 
@@ -33,6 +36,9 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
         self.gen_loops, self.dis_loops = gen_dis_train_loops
         self.warmup_epochs = warmup_epochs
         self.alpha = alpha
+
+        self.norm1_x_scaler = MinMaxScaler()
+        self.critic_x_scaler = MinMaxScaler()
 
     @property
     def automatic_optimization(self) -> bool:
@@ -210,17 +216,37 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
             x_hat = self.model(x)
             norm1_x = torch.linalg.norm(
                 (x - x_hat).reshape(batch_size, -1), ord=1, dim=1)
-            critic_x = self.model.critic_x(x_hat).squeeze()
-            # score = self.alpha * loss_mse
-            # + (1 - self.alpha) * loss_x.squeeze()
+            critic_x = self.model.critic_x(x_hat).view(-1)
 
-        # score = score.tolist()
-        score = torch.stack([norm1_x, critic_x], dim=1).tolist()
-        if scale:
-            score = self.scores_scaler.transform(score).tolist()
+        s_norm1_x = self.norm1_x_scaler.transform(
+            norm1_x.numpy().reshape(-1, 1))
+        s_critic_x = self.critic_x_scaler.transform(
+            critic_x.numpy().reshape(-1, 1))
+        score = self.alpha * s_norm1_x + (1 - self.alpha) * s_critic_x
+        score = score.tolist()
         if return_pred:
             return score, x_hat
         return score
+
+    def fit_scalers(self, dataloader: DataLoader):
+        """Dataloader has to have batch_size equals 1."""
+        ws = self.model.params['window_size']
+        norm1_x, critic_x = [], []
+        for i, batch in enumerate(tqdm(dataloader)):
+            if i % ws == 0:
+                x, _ = self.get_Xy(batch)
+                with torch.no_grad():
+                    x_hat = self.model(x)
+                    n1_x = torch.linalg.norm(
+                        (x - x_hat).reshape(1, -1), ord=1, dim=1)
+                    c_x = self.model.critic_x(x_hat).view(-1)
+                norm1_x += [n1_x]
+                critic_x += [c_x]
+
+        self.norm1_x_scaler = MinMaxScaler().fit(
+            torch.stack(norm1_x).numpy())
+        self.critic_x_scaler = MinMaxScaler().fit(
+            torch.stack(critic_x).numpy())
 
     # def validation_step(self, batch, batch_idx):
     #     x, _ = self.get_Xy(batch)

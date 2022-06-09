@@ -5,7 +5,7 @@ import pandas as pd
 from typing import List
 
 from predpy.experimentator import Experimentator
-from .anomaly_detector_base import AnomalyDetector
+from .base import AnomalyDetector
 from .data_loading import get_dataset, get_dataset_names
 
 

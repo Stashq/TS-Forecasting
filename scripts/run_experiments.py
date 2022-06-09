@@ -27,7 +27,7 @@ from literature.anom_trans import AnomalyTransformer, ATWrapper
 from literature.velc import VELC, VELCWrapper
 from literature.dagmm import DAGMM, DAGMMWrapper
 from literature.tadgan import TADGAN, TADGANWrapper
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 from models.ideas import LSTMMVR, ConvMVR, MVRWrapper
 from models import ConvAE, MultipleConvAE, ConvAEWrapper
 from anomaly_detection import (
@@ -94,13 +94,13 @@ datasets_params = [
 ]
 
 models_params = [
-    # ModelParams(
-    #     name_="VELC_h8_l1_z4_C50_th50", cls_=VELC,
-    #     init_params=dict(
-    #         c_in=c_in, window_size=window_size, h_size=8, n_layers=1, z_size=4,
-    #         N_constraint=50, threshold=50),
-    #     WrapperCls=VELCWrapper
-    # ),
+    ModelParams(
+        name_="VELC_h8_l1_z4_C10_th0.025", cls_=VELC,
+        init_params=dict(
+            c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=25,
+            N_constraint=10, threshold=0.025),
+        WrapperCls=VELCWrapper
+    ),
     # # h_size = 50
     # ModelParams(
     #     name_="TadGAN_h.....", cls_=TADGAN,
@@ -194,13 +194,13 @@ models_params = [
     # #         n_layers=1),
     # #     WrapperCls=MVRWrapper
     # # ),
-    ModelParams(
-        name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, n_kernels=10,
-            kernel_size=3, emb_size=50, lambda_=0.3),
-        WrapperCls=MVRWrapper
-    ),
+    # ModelParams(
+    #     name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, n_kernels=10,
+    #         kernel_size=3, emb_size=50, lambda_=0.3),
+    #     WrapperCls=MVRWrapper
+    # ),
     # ModelParams(
     #     name_=f'AE_ws{window_size}_nk10_ks3_es50', cls_=ConvAE,
     #     init_params=dict(
@@ -236,9 +236,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=10, gpus=1, auto_lr_find=False)
+    max_epochs=25, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=2, min_delta=1e-2, verbose=True)
+    monitor='val_loss', patience=5, min_delta=1e-2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,

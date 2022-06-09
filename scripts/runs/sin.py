@@ -28,8 +28,10 @@ from literature.anom_trans import AnomalyTransformer, ATWrapper
 from literature.velc import VELC, VELCWrapper
 from literature.dagmm import DAGMM, DAGMMWrapper
 from literature.tadgan import TADGAN, TADGANWrapper
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
+from anomaly_detection.data_loading import get_dataset
 from models.ideas import LSTMMVR, ConvMVR, MVRWrapper
+
 
 from pytorch_lightning.loggers import TensorBoardLogger
 import pickle
@@ -163,26 +165,6 @@ exp = load_last_experimentator('./saved_experiments')
 # #     exp, dataset_idx=ds_id,
 # #     # file_path='./pages/Handmade/%s/%s.html' % (dataset_name, str(exp.exp_date))
 # # )
-
-
-def get_dataset(
-    path: Path, window_size: int, ts_scaler: TransformerMixin = None
-) -> MultiTimeSeriesDataset:
-    df = pd.read_csv(
-        path, header=None
-    )
-    try:
-        df.columns = df.columns.astype(int)
-    except TypeError:
-        pass
-    if ts_scaler is not None:
-        df[:] = ts_scaler.transform(df)
-    dataset = MultiTimeSeriesDataset(
-        sequences=[df],
-        window_size=window_size,
-        target=df.columns.tolist()
-    )
-    return dataset
 
 
 ds_id = 0

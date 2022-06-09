@@ -3,7 +3,7 @@ from torch import nn, optim
 from torch.nn.parameter import Parameter
 from typing import Dict, Generator, List, Union, Tuple
 
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 
 from .dagmm import DAGMM
 from predpy.wrapper import Reconstructor

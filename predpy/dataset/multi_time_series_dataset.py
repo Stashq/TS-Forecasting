@@ -13,6 +13,10 @@ from tqdm.auto import tqdm
 import scipy
 
 
+default_wdd_w_f = scipy.stats.norm(loc=0, scale=1).pdf(-1.5)
+default_wdd_ma_f = scipy.stats.norm(loc=0, scale=1).pdf(-2)
+
+
 class MultiTimeSeriesDataset(TimeSeriesDataset):
     """Custom Pytorch Dataset class for single time series.\n
 
@@ -398,7 +402,9 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
 
     def calculate_rec_wdd(
         self, pred_rec_cls: List[int],
-        true_rec_cls: List[int], t_max: int, w_f: float, ma_f: float = 0
+        true_rec_cls: List[int], t_max: int,
+        w_f: float = default_wdd_w_f,
+        ma_f: float = default_wdd_ma_f
     ) -> float:
         """Calculate WDD score from article
         'Evaluation metrics for anomaly detection algorithms in time-series'
@@ -420,7 +426,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         cls_df = pd.DataFrame(zip(
             true_rec_cls, pred_rec_cls
         ), index=ids, columns=['true_cls', 'pred_cls'])
-        nd = scipy.stats.norm(loc=0, scale=t_max)
+        nd = scipy.stats.norm(loc=0, scale=1)
 
         def score(row):
             # calculate w
@@ -433,7 +439,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
                     return -ma_f
                 else:
                     diff = abs(preds.index - idx).min()
-                    return nd.pdf(diff)
+                    return nd.pdf(diff/t_max)
             # find FA
             elif row['pred_cls'] == 1:
                 idx = row.name
@@ -454,7 +460,9 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
 
     def calculate_point_wdd(
         self, pred_rec_cls: List[int],
-        true_rec_cls: List[int], t_max: int, w_f: float, ma_f: float = 0
+        true_rec_cls: List[int], t_max: int,
+        w_f: float = default_wdd_w_f,
+        ma_f: float = default_wdd_ma_f
     ) -> float:
         """Calculate WDD score from article
         'Evaluation metrics for anomaly detection algorithms in time-series'
@@ -483,7 +491,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
             self.set_record(idx, 'pred_cls', pred_rec_cls[idx])
 
         seqs = pd.concat(self.sequences)
-        nd = scipy.stats.norm(loc=0, scale=t_max)
+        nd = scipy.stats.norm(loc=0, scale=1)
 
         def score(row):
             # calculate w
@@ -496,7 +504,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
                     return -ma_f
                 else:
                     diff = abs(preds.index - idx).min()
-                    return nd.pdf(diff)
+                    return nd.pdf(diff/t_max)
             # find FA
             elif row['pred_cls'] == 1:
                 idx = row.name

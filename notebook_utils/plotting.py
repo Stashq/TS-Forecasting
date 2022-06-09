@@ -2,8 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from typing import List, Literal, Tuple
-# from predpy.plotter import plot_anomalies
+from typing import Dict, List, Literal, Tuple
 import seaborn as sns
 import matplotlib.pyplot as plt
 import math
@@ -11,6 +10,24 @@ import math
 
 os.chdir('/home/stachu/Projects/Anomaly_detection/TSAD')
 sns.set_style()
+
+
+def _adjust_subplot_params(
+    n_cols: int, n_rows: int = None, figsize: Tuple[int] = None,
+    features_cols: List[int] = None, n_features: int = None
+):
+    if features_cols is None:
+        features_cols = list(range(n_features))
+    if n_rows is not None:
+        assert n_rows * n_cols >= len(features_cols)
+    else:
+        if len(features_cols) < n_cols:
+            n_rows, n_cols = 1, len(features_cols)
+        else:
+            n_rows = math.ceil(len(features_cols)/2)
+    if figsize is None:
+        figsize = (n_cols * 5, n_rows * 2)
+    return n_rows, n_cols, figsize, features_cols
 
 
 def _select_ax(axs, n_rows, n_cols, i, title: str = None):
@@ -35,17 +52,8 @@ def plot_scores(
     classes: List[Literal[0, 1]] = None,
     figsize=None
 ):
-    if features_cols is None:
-        features_cols = list(range(scores.shape[1]))
-    if n_rows is not None:
-        assert n_rows * n_cols >= len(features_cols)
-    else:
-        if len(features_cols) < n_cols:
-            n_rows, n_cols = 1, len(features_cols)
-        else:
-            n_rows = math.ceil(len(features_cols)/2)
-    if figsize is None:
-        figsize = (n_cols * 5, n_rows * 2)
+    n_rows, n_cols, figsize, features_cols = _adjust_subplot_params(
+        n_cols, n_rows, figsize, features_cols, scores.shape[1])
 
     data = scores[:, features_cols]
     df = pd.DataFrame(
@@ -76,17 +84,8 @@ def plot_kde(
     n_rows: int = None, n_cols: int = 2,
     figsize=None, scores_names=['0', '1']
 ):
-    if features_cols is None:
-        features_cols = list(range(scores1.shape[1]))
-    if n_rows is not None:
-        assert n_rows * n_cols >= len(features_cols)
-    else:
-        if len(features_cols) < n_cols:
-            n_rows, n_cols = 1, len(features_cols)
-        else:
-            n_rows = math.ceil(len(features_cols)/2)
-    if figsize is None:
-        figsize = (n_cols * 5, n_rows * 2)
+    n_rows, n_cols, figsize, features_cols = _adjust_subplot_params(
+        n_cols, n_rows, figsize, features_cols, scores1.shape[1])
 
     # defining data and classes
     if scores2 is not None:
@@ -129,17 +128,8 @@ def plot_scores_and_bands(
     classes: List[Literal[0, 1]] = None,
     figsize=None
 ):
-    if features_cols is None:
-        features_cols = list(range(scores.shape[1]))
-    if n_rows is not None:
-        assert n_rows * n_cols >= len(features_cols)
-    else:
-        if len(features_cols) < n_cols:
-            n_rows, n_cols = 1, len(features_cols)
-        else:
-            n_rows = math.ceil(len(features_cols)/2)
-    if figsize is None:
-        figsize = (n_cols * 5, n_rows * 2)
+    n_rows, n_cols, figsize, features_cols = _adjust_subplot_params(
+        n_cols, n_rows, figsize, features_cols, scores.shape[1])
 
     data = scores[:, features_cols]
     df = pd.DataFrame(
@@ -166,21 +156,52 @@ def plot_scores_and_bands(
 
 
 def plot_dataset(
-    train_ds: np.ndarray, test_ds: np.ndarray,
-    anoms_vrects: List[Tuple[int]]
+    ds: Dict[str, np.ndarray],
+    anoms_vrects: List[Tuple[int]] = [],
+    pred_anoms_vrects: List[Tuple[int]] = [],
+    features_cols: List[int] = None,
+    figsize: Tuple[int] = None,
+    min_id: int = None, max_id: int = None,
+    hlines: Dict[str, float] = {}
 ):
-    # train_np = train_dl.dataset.sequences[0].to_numpy()
-    # test_np = test_dl.dataset.sequences[0].to_numpy()
-    n_features = train_ds.shape[1]
-    n_cols = 2
-    n_rows = int(n_features/n_cols) + int(n_features % n_cols > 0)
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 9, n_rows * 2))
-    for i in range(n_features):
-        col = i % n_cols
-        row = int(i/n_cols)
-        axs[row, col].plot(train_ds[:, i], label='train')
-        axs[row, col].plot(test_ds[:, i], label='test')
+    n_points, n_features = list(ds.values())[0].shape[:2]
+    is_df = type(list(ds.values())[0]) in [pd.DataFrame, pd.Series]
+    n_rows, n_cols, figsize, features_cols = _adjust_subplot_params(
+        2, None, figsize, features_cols, n_features)
 
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize)
+    for i, col_id in enumerate(features_cols):
+        ax = _select_ax(axs, n_rows, n_cols, i)
+        for ds_name, ds_vals in ds.items():
+            if is_df:
+                ax.plot(ds_vals.iloc[min_id:max_id, col_id], label=ds_name)
+            else:
+                ax.plot(ds_vals[min_id:max_id, col_id], label=ds_name)
         for start, end in anoms_vrects:
-            axs[row, col].axvspan(start, end, alpha=0.2, color='red')
+            _add_vrect(
+                ax, start, end, color='red', min_id=min_id, max_id=max_id)
+        for start, end in pred_anoms_vrects:
+            _add_vrect(
+                ax, start, end, color='blue', min_id=min_id, max_id=max_id)
+        for hl_name, hl_val in hlines.items():
+            plt.hlines(
+                y=hl_val, xmin=0, xmax=n_points, color='green',
+                linestyles='-', lw=2, label=hl_name)
     return fig
+
+
+def _add_vrect(
+    ax, start: int, end: int, color: str = 'red',
+    min_id: int = None, max_id: int = None
+):
+    if start > end:
+        start, end = end, start
+    if (min_id is not None and start < min_id and end < min_id)\
+            or (max_id is not None and start >= max_id and end >= max_id):
+        pass
+    else:
+        if min_id is not None and start < min_id:
+            start = min_id
+        if max_id is not None and end >= max_id:
+            end = max_id
+        ax.axvspan(start, end, alpha=0.2, color=color)

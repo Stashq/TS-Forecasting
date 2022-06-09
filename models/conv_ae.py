@@ -7,7 +7,7 @@ from torch.nn.parameter import Parameter
 from typing import Dict, Generator, List, Tuple, Union
 
 from predpy.wrapper import Reconstructor
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 
 
 def get_conv_output_size(seq_len, k_size, padding, stride):

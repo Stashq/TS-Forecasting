@@ -8,7 +8,7 @@ from typing import Dict, Generator, List, Tuple, Union
 
 from models import LSTMEncoder, LSTMDecoder, ConvEncoder, ConvDecoder
 from predpy.wrapper import Reconstructor
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 
 
 class LSTMMVR(nn.Module):

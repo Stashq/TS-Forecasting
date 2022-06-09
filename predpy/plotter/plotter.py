@@ -749,6 +749,18 @@ def plot_anomalies(
     fig.show()
 
 
+def get_cls_ids_ranges(
+    series_index: pd.Index, classes: np.ndarray,
+    max_break: Union[int, timedelta] = None
+) -> Union[pd.Series, pd.DataFrame]:
+    series_index = series_index[-len(classes):]
+    ids = series_index[np.where(classes == 1)[0]]
+
+    ranges = get_ids_ranges(ids, max_break=max_break)
+
+    return ranges
+
+
 def get_ids_ranges(
     ids: List,
     max_break: Union[int, timedelta] = None

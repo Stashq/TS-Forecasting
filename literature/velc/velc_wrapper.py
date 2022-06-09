@@ -2,10 +2,12 @@ from torch import nn, optim
 from typing import Dict, Generator, List, Tuple, Union
 import torch
 from torch.nn.parameter import Parameter
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 from sklearn.preprocessing import MinMaxScaler
 # from pathlib import Path
 
-from anomaly_detection.anomaly_detector_base import AnomalyDetector
+from anomaly_detection import AnomalyDetector
 from predpy.wrapper import Reconstructor
 # from predpy.data_module.multi_time_series_module import (
 #     MultiTimeSeriesDataloader)
@@ -22,7 +24,7 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
         optimizer_kwargs: Dict = {},
         target_cols_ids: List[int] = None,
         params_to_train: Generator[Parameter, None, None] = None,
-        alpha: float = 0.5, beta: float = 0.5
+        alpha: float = 0.5
     ):
         AnomalyDetector.__init__(self, score_names=['norm1_x', 'norm1_z'])
         Reconstructor.__init__(
@@ -34,7 +36,6 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
         )
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.alpha = alpha
-        self.beta = beta
 
     def forward(self, x):
         return self.model(x)
@@ -68,17 +69,36 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
         batch_size = x.size(0)
         with torch.no_grad():
             x_dash, z_dash, _, _, re_z_dash, _, _ = self.model(x)
-            # score = self.alpha * torch.linalg.norm(
-            #     (x - x_dash).reshape(batch_size, -1), ord=1, dim=1)
-            # score += self.beta * torch.linalg.norm(
-            #     (z_dash - re_z_dash).reshape(batch_size, -1), ord=1, dim=1)
-            score_x = self.alpha * torch.linalg.norm(
+            score_x = torch.linalg.norm(
                 (x - x_dash).reshape(batch_size, -1), ord=1, dim=1)
-            score_z = self.beta * torch.linalg.norm(
+            score_z = torch.linalg.norm(
                 (z_dash - re_z_dash).reshape(batch_size, -1), ord=1, dim=1)
-        score = torch.stack([score_x, score_z], dim=1).tolist()
+            score = self.alpha * score_x + (1 - self.alpha) * score_z
+
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:
             return score, x_dash
         return score
+
+    def fit_scalers(self, dataloader: DataLoader):
+        """Dataloader has to have batch_size equals 1."""
+        ws = self.model.params['window_size']
+        scores = []
+        for i, batch in enumerate(tqdm(dataloader)):
+            if i % ws == 0:
+                x, _ = self.get_Xy(batch)
+                batch_size = x.size(0)
+                with torch.no_grad():
+                    x_dash, z_dash, _, _, re_z_dash, _, _ = self.model(x)
+                    s_x = torch.linalg.norm(
+                        (x - x_dash).reshape(batch_size, -1),
+                        ord=1, dim=1)
+                    s_z = torch.linalg.norm(
+                        (z_dash - re_z_dash).reshape(batch_size, -1),
+                        ord=1, dim=1)
+                    s = self.alpha * s_x + (1 - self.alpha) * s_z
+                scores += [s]
+
+        self.scores_scaler = MinMaxScaler().fit(
+            torch.concat(scores).numpy().reshape(-1, 1))
