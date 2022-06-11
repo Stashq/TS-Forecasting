@@ -36,9 +36,12 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         self,
         sequences: List[pd.DataFrame],
         window_size: int,
-        target: Union[str, List[str]]
+        target: Union[str, List[str]] = None,
+        for_reconstruction: bool = True
     ):
         """Creates *MultiTimeSeriesDataset* instance.
+        If its use for reconstruction, last element of last sequence
+        is duplicated to mantain number of samples.
 
         Parameters
         ----------
@@ -54,11 +57,29 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         self.window_size = window_size
         if not isinstance(target, list):
             target = [target]
+        elif target is None:
+            target = sequences[0].columns.tolist()
         self.target = target
         self.sequences = sequences
+        self.n_points = sum([seq.shape[0] for seq in sequences])
+        self.for_reconstruction = for_reconstruction
+        # if for_reconstruction:
+        #     self._repeat_last_element()
 
         self._ending_seqs_ids = self._get_ending_sequences_ids(
             sequences, window_size)
+
+    # def _repeat_last_element(self):
+    #     try:
+    #         index = self.sequences[-1].index
+    #         step = index[-1] - index[-2]
+    #         new_point_id = index[-1] + step
+    #     except TypeError:
+    #         new_point_id = 'new_point_id'
+    #     last_point = self.sequences[-1].iloc[-1:]
+    #     last_point.index = [new_point_id]
+    #     self.sequences[-1] = pd.concat(
+    #         [self.sequences[-1], last_point])
 
     def _drop_too_short_seqs(
         self,
@@ -131,7 +152,12 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         int
             Sequence index containing record with provided global index.
         """
-        if idx > self._ending_seqs_ids[-1] or idx < 0:
+        if idx < 0:
+            raise IndexError("Index out of range.")
+        elif self.for_reconstruction\
+                and (idx == self._ending_seqs_ids[-1] + 1):
+            idx -= 1
+        elif idx > self._ending_seqs_ids[-1]:
             raise IndexError("Index out of range.")
 
         seqs_id = None
@@ -181,8 +207,12 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         seq_id, rec_id_in_seq = self._global_id_to_seq_rec_id(idx)
         seq = self.sequences[seq_id]\
             .iloc[rec_id_in_seq:rec_id_in_seq + self.window_size]
+
+        label_idx = rec_id_in_seq + self.window_size
+        if self.for_reconstruction:
+            label_idx -= 1
         label = self.sequences[seq_id]\
-            .iloc[rec_id_in_seq + self.window_size][self.target]
+            .iloc[label_idx][self.target]
         return seq, label
 
     def set_record(self, idx: int, target: str, vals):
@@ -206,6 +236,8 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         n_records = 0
         for seq in self.sequences:
             n_records += seq.shape[0] - self.window_size
+        if self.for_reconstruction:
+            n_records += 1
         return n_records
 
     def __getitem__(self, idx: int) -> Dict[torch.Tensor, torch.Tensor]:
@@ -309,8 +341,11 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
         if end_idx is None:
             end_idx = self._ending_seqs_ids[-1]
         seqs = self._get_with_records_range(start_idx, end_idx)
+        label_start_idx = self.window_size
+        if self.for_reconstruction:
+            label_start_idx -= 1
         labels = pd.concat([
-            seq[self.target].iloc[self.window_size:] for seq in seqs])
+            seq[self.target].iloc[label_start_idx:] for seq in seqs])
         return labels
 
     def get_indices_like_recs(

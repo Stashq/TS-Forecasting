@@ -59,8 +59,8 @@ collection_name = "ServerMachineDataset"
 # dataset_name1 = "machine-1-1"
 # dataset_name2 = "machine-1-2"
 # dataset_name3 = "machine-1-3"
-# ds_names = os.listdir(f'./data/{topic}/{collection_name}/train')
-ds_names = ["machine-1-1.csv"]  # , "machine-1-2.csv", "machine-1-3.csv"]
+ds_names = os.listdir(f'./data/{topic}/{collection_name}/train')
+# ds_names = ["machine-1-1.csv"]  # , "machine-1-2.csv", "machine-1-3.csv"]
 
 # c_in = 1
 # c_out = 1
@@ -94,18 +94,18 @@ datasets_params = [
 ]
 
 models_params = [
-    ModelParams(
-        name_="VELC_h8_l1_z4_C10_th0.025", cls_=VELC,
-        init_params=dict(
-            c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=25,
-            N_constraint=10, threshold=0.025),
-        WrapperCls=VELCWrapper
-    ),
+    # ModelParams(
+    #     name_="VELC_h8_l1_z4_C10_th0.025", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=25,
+    #         N_constraint=10, threshold=0.025),
+    #     WrapperCls=VELCWrapper
+    # ),
     # # h_size = 50
     # ModelParams(
-    #     name_="TadGAN_h.....", cls_=TADGAN,
+    #     name_="TadGAN_h100_l2_z20_g1d1_warmup0_(literature)", cls_=TADGAN,
     #     init_params=dict(
-    #         window_size=window_size, c_in=c_in, h_size=100, n_layers=1, z_size=20),
+    #         window_size=window_size, c_in=c_in, h_size=100, n_layers=2, z_size=20),
     #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
     #         gen_dis_train_loops=(1, 1), warmup_epochs=0)
     # ),
@@ -180,12 +180,12 @@ models_params = [
     #         window_size=window_size, c_in=c_in, d_model=5, n_layers=2,
     #         lambda_=0.5),
     #     WrapperCls=ATWrapper),
-    # ModelParams(
-    #     name_="AnomTrans_l3_d512_lambda3", cls_=AnomalyTransformer,
-    #     init_params=dict(
-    #         window_size=window_size, c_in=c_in, d_model=512, n_layers=3,
-    #         lambda_=3),
-    #     WrapperCls=ATWrapper),
+    ModelParams(
+        name_="AnomTrans_l3_d512_lambda3", cls_=AnomalyTransformer,
+        init_params=dict(
+            window_size=window_size, c_in=c_in, d_model=512, n_layers=3,
+            lambda_=3),
+        WrapperCls=ATWrapper),
 
     # # ModelParams(
     # #     name_=f"LSTMMVR_w{window_size}_h50_z10_l1", cls_=LSTMMVR,
@@ -236,9 +236,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=25, gpus=1, auto_lr_find=False)
+    max_epochs=15, gpus=1, auto_lr_find=True)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=5, min_delta=1e-2, verbose=True)
+    monitor='val_loss', patience=3, min_delta=1e-3, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -258,10 +258,10 @@ exp.run_experiments(
     experiments_path="./saved_experiments",
     safe=True, continue_run=True
 )
-plot_exp_predictions(
-    exp, dataset_idx=0,
-    # file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name1, str(exp.exp_date))
-)
+# plot_exp_predictions(
+#     exp, dataset_idx=0,
+#     # file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name1, str(exp.exp_date))
+# )
 # plot_exp_predictions(
 #     exp, dataset_idx=1,
 #     file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name2, str(exp.exp_date))

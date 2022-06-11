@@ -31,13 +31,13 @@ def get_a_scores(model, dataloader) -> np.ndarray:
     return a_scores
 
 
-def get_model_a_scores_one_per_point(
+def get_a_scores_one_per_point(
     model, dataloader: DataLoader, ws: int,
     **a_scorer_kwargs
 ) -> np.ndarray:
     """Batch size must equal 1"""
     a_scores = []
-    len_ = dataloader.dataset.sequences[0].shape[0]
+    len_ = dataloader.dataset.n_points
     last_n = len_ % ws
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader)):
@@ -45,22 +45,22 @@ def get_model_a_scores_one_per_point(
                 x = batch['sequence']
                 a_s = model.anomaly_score(x, **a_scorer_kwargs)
                 a_scores += [a_s[0]]
-            if i == len(dataloader) - 1 and last_n > 0:
+            elif (i == len(dataloader) - 1):
                 x = batch['sequence']
                 a_s = model.anomaly_score(x, **a_scorer_kwargs)
-                a_scores += [a_s[0, -last_n:]]
+                a_scores += [a_s[0][-last_n:]]
     a_scores = np.concatenate(a_scores, axis=0)
     if len(a_scores.shape) == 1:
         a_scores = a_scores.reshape(-1, 1)
     return a_scores
 
 
-def get_model_recon_one_per_point(
+def get_recon_one_per_point(
     model: Reconstructor, dataloader: DataLoader, ws: int
 ) -> List:
     """Batch size must equal 1"""
     recon = []
-    len_ = dataloader.dataset.sequences[0].shape[0]
+    len_ = dataloader.dataset.n_points
     last_n = len_ % ws
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader)):
@@ -104,15 +104,15 @@ def adjust_point_cls_with_window(
     are anomalies."""
     s = pd.Series(point_cls)
     res = s.rolling(2*ws - 1, center=True).max()
-    res[:ws] = res[:ws].index.to_series().apply(
+    res[:ws-1] = res[:ws-1].index.to_series().apply(
         lambda idx: s[0:idx + ws].max()
     )
     if return_point_cls:
-        res[-ws:] = res[-ws:].index.to_series().apply(
+        res[-ws+1:] = res[-ws+1:].index.to_series().apply(
             lambda idx: s[idx - ws:].max()
         )
     else:
-        res = res.dropna().iloc[1:]
+        res = res.dropna()
 
     return res.to_numpy()
 
@@ -210,7 +210,7 @@ def exp_step(
     for beta in betas:
         fb_s = fbeta_score(true_cls, pred_cls, beta=beta)
         threshold_stats[f'f{beta}-score'] += [fb_s]
-    cm = confusion_matrix(true_cls, pred_cls)
+    cm = confusion_matrix(true_cls, pred_cls, labels=[0, 1])
 
     threshold_stats['tn'] += [cm[0, 0]]
     threshold_stats['fp'] += [cm[0, 1]]

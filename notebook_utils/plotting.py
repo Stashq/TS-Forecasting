@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Literal, Tuple
+from typing import Dict, List, Literal, Tuple, Union
 import seaborn as sns
 import matplotlib.pyplot as plt
 import math
@@ -24,7 +24,7 @@ def _adjust_subplot_params(
         if len(features_cols) < n_cols:
             n_rows, n_cols = 1, len(features_cols)
         else:
-            n_rows = math.ceil(len(features_cols)/2)
+            n_rows = math.ceil(len(features_cols)/n_cols)
     if figsize is None:
         figsize = (n_cols * 5, n_rows * 2)
     return n_rows, n_cols, figsize, features_cols
@@ -156,22 +156,26 @@ def plot_scores_and_bands(
 
 
 def plot_dataset(
-    ds: Dict[str, np.ndarray],
+    ds: Union[Union[np.ndarray, pd.DataFrame],
+              Dict[str, Union[np.ndarray, pd.DataFrame]]],
     anoms_vrects: List[Tuple[int]] = [],
     pred_anoms_vrects: List[Tuple[int]] = [],
     features_cols: List[int] = None,
     figsize: Tuple[int] = None,
     min_id: int = None, max_id: int = None,
-    hlines: Dict[str, float] = {}
+    hlines: Dict[str, float] = {},
+    n_cols: int = 2, n_row: int = None
 ):
+    if not isinstance(ds, Dict):
+        ds = {'dataset': ds}
     n_points, n_features = list(ds.values())[0].shape[:2]
     is_df = type(list(ds.values())[0]) in [pd.DataFrame, pd.Series]
     n_rows, n_cols, figsize, features_cols = _adjust_subplot_params(
-        2, None, figsize, features_cols, n_features)
+        n_cols, n_row, figsize, features_cols, n_features)
 
     fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize)
     for i, col_id in enumerate(features_cols):
-        ax = _select_ax(axs, n_rows, n_cols, i)
+        ax = _select_ax(axs, n_rows, n_cols, i, title=f'feature {col_id}')
         for ds_name, ds_vals in ds.items():
             if is_df:
                 ax.plot(ds_vals.iloc[min_id:max_id, col_id], label=ds_name)

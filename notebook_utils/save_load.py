@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pandas as pd
 import re
 
@@ -15,6 +16,8 @@ def load_th_exp(path):
     return df
 
 
-def save_th_exp(df, path):
+def save_th_exp(df, path: str, mk_dirs: bool = False):
+    if mk_dirs:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
     df['preds_rec_cls'] = df['preds_rec_cls'].apply(lambda x: x.tolist())
     df.to_csv(path, index=False)
