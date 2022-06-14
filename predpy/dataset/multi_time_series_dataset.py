@@ -362,7 +362,7 @@ class MultiTimeSeriesDataset(TimeSeriesDataset):
                 indices += list(
                     seq.index.to_series()
                     .rolling(self.window_size)
-                )[self.window_size-1:-1]
+                )[self.window_size-1:]
         return indices
 
     def copy(self):

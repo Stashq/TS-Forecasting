@@ -6,7 +6,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import pandas as pd
 from torch.utils.data import DataLoader
 import torch
-from typing import List, Literal
+from typing import List, Literal, Dict, Union, Tuple
 from pathlib import Path
 from tqdm.auto import tqdm
 import seaborn as sns
@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import math
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, fbeta_score
-import scipy
 import re
 
 from predpy.dataset import MultiTimeSeriesDataset
@@ -43,184 +42,80 @@ from notebook_utils.ts_stats import (
     get_bollinger, get_std, get_diff
 )
 
+def a_score_exp(
+    train_dl: DataLoader, test_dl: DataLoader,
+    exp: Experimentator, scale: bool, models_ids: List = None
+) -> Dict:
+    res = {}
+    if models_ids is None:
+        models_ids = exp.models_params.index
+    else:
+        assert all(item in exp.models_params.index for item in models_ids)
+    for m_id in tqdm(models_ids):
+        m_name = exp.models_params.loc[m_id]['name_']
+        model = exp.load_pl_model(m_id, f'checkpoints/{ds_name}/{m_name}')
+        if scale:
+            train_a_scores = model.fit_scores_scaler(
+                train_dl, use_tqdm=False)
+        else:
+            train_a_scores = get_a_scores(
+                train_dl, use_tqdm=False)
+
+        test_a_scores = get_a_scores(
+            model, test_dl, scale=scale, use_tqdm=False)
+        res[m_name] = [train_a_scores, test_a_scores]
+    return res
+
+def exctract_a_scores(
+    exps_a_scores: Union[Dict, List[Dict]],
+    train_len: int = None, test_len: int = None):
+    if not (isinstance(exps_a_scores, List) or isinstance(exps_a_scores, Tuple)):
+        exps_a_scores = [exps_a_scores]
+    
+    train_a_scores = {}
+    test_a_scores = {}
+    for e_a_s in exps_a_scores:
+        for m_name, scores in e_a_s.items():
+            if train_len is not None and len(scores[0]) < train_len:
+                n_padding = train_len - len(scores[0])
+                scores[0] = np.concatenate([np.zeros((n_padding, 1)), scores[0]])
+            if test_len is not None and len(scores[1]) < test_len:
+                # old = scores[1]
+                n_padding = test_len - len(scores[1])
+                scores[1] = np.concatenate([np.zeros((n_padding, 1)), scores[1]])
+            print(test_len, len(scores[1]))
+            train_a_scores[m_name] = scores[0]
+            test_a_scores[m_name] = scores[1]
+    return train_a_scores, test_a_scores
 
 
-    # exp = load_experimentator('./saved_experiments/2022-06-05_16:27:49.pkl')
-    # model_id = 0
+
+topic, colleciton_name, ds_name = 'Handmade', 'Sin', 'artificial_1'
+window_size = 200
+# scores_dirpath = f'notebook_a_scores/{colleciton_name}/{ds_name}/{m_name}/{exp_date}/'
 
 
-    # m_name = 'AnomTrans_l3_d512_lambda3'
-    # topic, colleciton_name, ds_name = 'Industry', 'ServerMachineDataset', 'machine-1-1'
-    # exp_date = exp.exp_date
-    # model = exp.load_pl_model(model_id, f'checkpoints/machine-1-1/{m_name}')
-    # window_size = model.model.params['window_size']
-    # scores_dirpath = f'notebook_a_scores/{colleciton_name}/{ds_name}/{m_name}/{exp_date}/'
+train_ds = get_dataset(
+    f'data/{topic}/{colleciton_name}/train/{ds_name}.csv',
+    window_size=window_size)
+test_ds = get_dataset(
+    f'data/{topic}/{colleciton_name}/test/{ds_name}.csv',
+    window_size=window_size)
 
-    # train_ds = get_dataset(
-    #     f'data/{topic}/{colleciton_name}/train/{ds_name}.csv',
-    #     window_size=window_size)
-    # test_ds = get_dataset(
-    #     f'data/{topic}/{colleciton_name}/test/{ds_name}.csv',
-    #     window_size=window_size)
+train_dl = DataLoader(train_ds, batch_size=500)
+test_dl = DataLoader(test_ds, batch_size=500)
+test_index = test_ds.sequences[0].index
 
-    # train_dl = DataLoader(train_ds, batch_size=500)
-    # test_dl = DataLoader(test_ds, batch_size=500)
-    # test_index = test_ds.sequences[0].index
+test_point_cls_path = f'data/{topic}/{colleciton_name}/test_label/{ds_name}.csv'
+test_point_cls = pd.read_csv(
+    test_point_cls_path, header=None)\
+    .iloc[:, 0].to_numpy()
 
-    # test_cls_path = f'saved_scores_preds/{colleciton_name}/{ds_name}/record_classes/{window_size}.csv'
-    # test_cls = pd.read_csv(
-    #     test_cls_path, header=None)\
-    #     .iloc[:, 0].to_numpy()
-    # test_point_cls_path = f'data/{topic}/{colleciton_name}/test_label/{ds_name}.csv'
-    # test_point_cls = pd.read_csv(
-    #     test_point_cls_path, header=None)\
-    #     .iloc[:, 0].to_numpy()
+n_features = train_ds.n_points
 
-def load_necessities(
-    exp: Experimentator, m_id: int, m_name: str,
-    ds_topic: str, ds_collection: str, ds_name: str
-):
-    model = exp.load_pl_model(m_id, f'checkpoints/{ds_name}/{m_name}')
-    window_size = model.model.params['window_size']
+exp2 = load_experimentator('./saved_experiments/2022-06-12_01:00:49.pkl')
+exp2.models_params['name_']
 
-    train_df = pd.read_csv(
-        f'data/{ds_topic}/{ds_collection}/train/{ds_name}.csv', header=None)
-    test_df = pd.read_csv(
-        f'data/{ds_topic}/{ds_collection}/test/{ds_name}.csv', header=None)
-    train_df.columns = train_df.columns.astype(int)
-    test_df.columns = test_df.columns.astype(int)
+exp_a_scores = a_score_exp(
+    train_dl, test_dl, exp2, scale=True, models_ids=[1])
 
-    test_point_cls = pd.read_csv(
-        f'data/{ds_topic}/{ds_collection}/test_label/{ds_name}.csv', header=None
-    ).iloc[:, 0].to_numpy()
-
-    return model, window_size, train_df, test_df, test_point_cls
-
-
-def find_th(
-    exp: Experimentator, m_id: int, m_name: str,
-    ds_topic: str, ds_collection: str, ds_name: str,
-    ws_list: List[int] = range(200, 1001, 100),
-    art_anom_id: int = 4400
-):
-    model, m_ws, train_df, test_df, test_point_cls = load_necessities(
-        exp=exp, m_id=m_id, m_name=m_name, ds_topic=ds_topic,
-        ds_collection=ds_collection, ds_name=ds_name
-    )
-    test_index = test_df.index
-
-    # test reconstruction from training dataset start index
-    recon_start_id = int(train_df.shape[0] * 0.8)
-    art = insert_anomaly(
-        ts_df=train_df.iloc[recon_start_id:],
-        art_anom_id=art_anom_id, ppf_val=0.995)
-
-    art_bounds = create_a_score_moving_std_diff(
-        model=model, ts_df=art, m_ws=m_ws, ws_list=ws_list)
-    test_ds_bounds = create_a_score_moving_std_diff(
-        model=model, ts_df=test_df, m_ws=m_ws, ws_list=ws_list)
-
-    th_art_test_best = {
-        ws: float(art_bounds[i].iloc[art_anom_id+1])
-        for i, ws in enumerate(ws_list)
-    }
-
-    gen_ths = [(ws, th) for ws, th in th_art_test_best.items()]
-    wss, ths = list(zip(*gen_ths))
-    ths_list = [[th] for th in ths]
-    art_th_exp = stats_experiment(
-        test_index, test_ds_bounds, ths_list=ths_list, ws_list=wss,
-        point_cls=test_point_cls, betas=[0.5, 1.0])
-
-    save_th_exp(
-        art_th_exp, f'saved_scores_preds/{ds_collection}/{ds_name}/auto_th_find_exp.csv')
-    return art_th_exp
-
-
-def create_a_score_moving_std_diff(
-    model, ts_df: pd.DataFrame, m_ws: int, ws_list: List[int]
-):
-    dl = DataLoader(
-        MultiTimeSeriesDataset([ts_df], m_ws, target=ts_df.columns.tolist()),
-        batch_size=1
-    )
-    a_scores = get_a_scores_one_per_point(
-        model, dl, m_ws, return_only_a_score=True
-    )
-    msds = [
-        get_diff(get_std(a_scores, ws))
-        for ws in ws_list
-    ]
-    return msds
-
-
-def insert_anomaly(
-    ts_df: pd.DataFrame, art_anom_id: int, ppf_val: float = 0.995
-) -> pd.DataFrame:
-    """Creating artificial dataset
-    from part of training dataset to test model reconstruction permormance
-    by adding and subtracting 
-    standard deviation multiplied by arbitrary z_score
-    from mean in selected point"""
-    assert art_anom_id < ts_df.shape[0]
-    ts_df_std = ts_df.std()
-    ts_df_mean = ts_df.mean()
-    art = ts_df.copy()
-
-    z_f = scipy.stats.norm.ppf(ppf_val)
-    art.iloc[art_anom_id] = ts_df_mean + z_f * ts_df_std
-    art.iloc[art_anom_id+1] = ts_df_mean - z_f * ts_df_std
-    return art
-
-
-def find_ths_for_collection(
-    exp: Experimentator, model_id: int,
-    model_name: str, ds_topic: str, ds_collection: str,
-    ds_names: List[str], verbose: bool = True, safe: bool = False
-):
-    res_df = []
-
-    for ds_name in ds_names:
-        try:
-            if verbose:
-                print('Finding threshold for dataset %s.' % ds_name)
-            art_th_exp = find_th(
-                exp=exp, m_id=model_id, m_name=model_name, ds_topic=ds_topic,
-                ds_collection=ds_collection, ds_name=ds_name,
-                ws_list=range(200, 1001, 100), art_anom_id=4400
-            )
-            art_th_exp['ds_name'] = ds_name
-            res_df += [art_th_exp]
-
-            if verbose:
-                print(art_th_exp[['ws', 'th', 'f0.5-score', 'f1.0-score']])
-        except Exception as e:
-            if safe:
-                print('Problem with dataset %s.' % ds_name)
-                print(e)
-            else:
-                raise e
-
-    res_df = pd.concat(res_df)
-    res_df.to_csv(f'saved_scores_preds/{ds_collection}/collection_th_finding_exp.csv', index=False)
-
-
-if __name__ == '__main__':
-    # exp = load_experimentator('./saved_experiments/2022-06-05_16:27:49.pkl')
-    exp = load_experimentator('./saved_experiments/2022-06-05_17:34:24.pkl')
-
-    model_id = 0
-    model_name = 'AnomTrans_l3_d512_lambda3'
-    ds_topic, ds_collection = 'Industry', 'ServerMachineDataset'
-    ds_names = os.listdir(f'./data/{ds_topic}/{ds_collection}/test')
-    ds_names = [ds_n[:-4] for ds_n in ds_names]
-
-    art_th_exp = find_th(
-        exp=exp, m_id=model_id, m_name=model_name, ds_topic=ds_topic,
-        ds_collection=ds_collection, ds_name='machine-3-9',
-        ws_list=range(200, 1001, 100), art_anom_id=4400
-    )
-    # find_ths_for_collection(
-    #     exp=exp, model_id=model_id, model_name=model_name,
-    #     ds_topic=ds_topic, ds_collection=ds_collection,
-    #     ds_names=ds_names, verbose=True)

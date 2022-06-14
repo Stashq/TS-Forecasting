@@ -75,6 +75,7 @@ class VELCWrapper(Reconstructor, AnomalyDetector):
                 (z_dash - re_z_dash).reshape(batch_size, -1), ord=1, dim=1)
             score = self.alpha * score_x + (1 - self.alpha) * score_z
 
+        score = score.reshape(-1, 1).tolist()
         if scale:
             score = self.scores_scaler.transform(score).tolist()
         if return_pred:

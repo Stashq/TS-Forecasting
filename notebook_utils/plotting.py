@@ -164,7 +164,8 @@ def plot_dataset(
     figsize: Tuple[int] = None,
     min_id: int = None, max_id: int = None,
     hlines: Dict[str, float] = {},
-    n_cols: int = 2, n_row: int = None
+    n_cols: int = 2, n_row: int = None,
+    show_f_name: bool = True, show_legend: bool = True
 ):
     if not isinstance(ds, Dict):
         ds = {'dataset': ds}
@@ -175,7 +176,10 @@ def plot_dataset(
 
     fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize)
     for i, col_id in enumerate(features_cols):
-        ax = _select_ax(axs, n_rows, n_cols, i, title=f'feature {col_id}')
+        f_name = None
+        if show_f_name:
+            f_name = f'feature {col_id}'
+        ax = _select_ax(axs, n_rows, n_cols, i, title=f_name)
         for ds_name, ds_vals in ds.items():
             if is_df:
                 ax.plot(ds_vals.iloc[min_id:max_id, col_id], label=ds_name)
@@ -188,9 +192,11 @@ def plot_dataset(
             _add_vrect(
                 ax, start, end, color='blue', min_id=min_id, max_id=max_id)
         for hl_name, hl_val in hlines.items():
-            plt.hlines(
+            ax.hlines(
                 y=hl_val, xmin=0, xmax=n_points, color='green',
                 linestyles='-', lw=2, label=hl_name)
+        if show_legend:
+            ax.legend()
     return fig
 
 

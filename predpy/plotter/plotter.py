@@ -9,7 +9,7 @@ import numpy as np
 from datetime import timedelta, datetime
 from predpy.experimentator import Experimentator
 from predpy.data_module import MultiTimeSeriesModule
-from .experimentator_plot import ExperimentatorPlot
+from predpy.plotter.experimentator_plot import ExperimentatorPlot
 from predpy.wrapper import Reconstructor
 
 
@@ -702,7 +702,7 @@ def plot_anomalies(
     time_series: Union[pd.Series, pd.DataFrame],
     predictions: pd.DataFrame = None,
     pred_anomalies_intervals: List[Tuple] = None,
-    true_anomalies_intervals: Union[pd.Series, pd.DataFrame] = None,
+    true_anomalies_intervals: List[Tuple] = None,
     scaler: TransformerMixin = None,
     is_ae: bool = True,
     title: str = "Finding anomalies",
@@ -710,9 +710,9 @@ def plot_anomalies(
     scores_df: pd.DataFrame = None,
     file_path: str = None
 ):
-    n_rows = 0
+    n_rows = 1
     if predictions is not None:
-        n_rows += time_series.shape[1]
+        n_rows = time_series.shape[1]
     if scores_df is not None:
         n_rows += 1
     fig = make_subplots(rows=n_rows, cols=1)
@@ -726,6 +726,13 @@ def plot_anomalies(
             fig, predictions=predictions, true_vals=time_series,
             models_names=[model_name], scaler=scaler,
             are_ae=[is_ae], prevent_plot=True)
+    else:
+        trace = ts_to_plotly_data(
+            ts=time_series, name='', color=SERIES_COLORS[0]
+        )[0]
+        fig.add_trace(
+            trace, row=1, col=1
+        )
     if scores_df is not None:
         _add_detection_scores(
             fig=fig, scores_df=scores_df, row_id=n_rows, col_id=1)
@@ -751,20 +758,31 @@ def plot_anomalies(
 
 def get_cls_ids_ranges(
     series_index: pd.Index, classes: np.ndarray,
-    max_break: Union[int, timedelta] = None
+    max_break: Union[int, timedelta] = None,
+    shift: int = None
 ) -> Union[pd.Series, pd.DataFrame]:
     series_index = series_index[-len(classes):]
     ids = series_index[np.where(classes == 1)[0]]
 
     ranges = get_ids_ranges(ids, max_break=max_break)
+    if shift is not None:
+        ranges = shift_ranges(ranges, shift)
 
     return ranges
+
+
+def shift_ranges(ranges: List[Tuple[int]], shift: int):
+    shifted_ranges = [
+        (start + shift, end + shift)
+        for start, end in ranges
+    ]
+    return shifted_ranges
 
 
 def get_ids_ranges(
     ids: List,
     max_break: Union[int, timedelta] = None
-) -> Union[pd.Series, pd.DataFrame]:
+) -> List[Tuple[int]]:
     if len(ids) == 0:
         return []
     ids = pd.Series(ids).sort_values()

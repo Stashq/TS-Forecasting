@@ -19,17 +19,11 @@ class AnomalyAttention(nn.Module):
 
         self.Q = self.K = self.V = self.sigma = torch.zeros((N, d_model))
 
-        # self.P = torch.zeros((N, N))
-        # self.S = torch.zeros((N, N))
-
     def forward(self, x):
 
         self.initialize(x)
-        # self.P = self.prior_association()
-        # self.S = self.series_association()
         P = self.prior_association()
         S = self.series_association()
-        # Z = self.reconstruction()
         Z = self.reconstruction(S)
 
         return Z, P, S
@@ -55,7 +49,6 @@ class AnomalyAttention(nn.Module):
             p = p.cuda()
         gaussian = self.gaussian_kernel(p.float(), self.sigma + 1e-8)
         gaussian /= gaussian.sum(dim=-1).unsqueeze(dim=-1)
-        # .view(gaussian.shape[0], gaussian.shape[1], 1)
 
         return gaussian
 
@@ -65,7 +58,6 @@ class AnomalyAttention(nn.Module):
             dim=0)
 
     def reconstruction(self, S):
-        # return self.S @ self.V
         return S @ self.V
 
 
@@ -113,17 +105,13 @@ class AnomalyTransformer(nn.Module):
              for _ in range(n_layers)]
         )
         self.decoding_layer = nn.Linear(d_model, c_in)
-        # self.P_layers = []
-        # self.S_layers = []
 
     def forward(self, x):
         P_layers = []
         S_layers = []
         x = self.embedding_layer(x)
-        for idx, block in enumerate(self.blocks):
+        for block in self.blocks:
             x, p, s = block(x)
-            # self.P_layers.append(block.attention.P)
-            # self.S_layers.append(block.attention.S)
             P_layers.append(p)
             S_layers.append(s)
 
@@ -131,25 +119,17 @@ class AnomalyTransformer(nn.Module):
         return x, P_layers, S_layers
 
     def layer_association_discrepancy(self, Pl, Sl):
-        def rowwise_kl(row, Pl, Sl):
-            return (
-                F.kl_div(Pl[row, :], Sl[row, :]) +
-                F.kl_div(Sl[row, :], Pl[row, :])
+        ad_vector =\
+            torch.sum(
+                F.kl_div(Pl, Sl, reduction='none'),
+                dim=-1
+            ) + torch.sum(
+                F.kl_div(Sl, Pl, reduction='none'),
+                dim=-1
             )
-
-        # batch_size, seq_len = Pl.shape[:2]
-        # Pl = Pl.view(batch_size*seq_len, -1)
-        # Sl = Sl.view(batch_size*seq_len, -1)
-        # ad_vector = torch.concat(
-        #     [rowwise_kl(row, Pl, Sl).unsqueeze(0)
-        #      for row in range(batch_size*seq_len)]
-        # )
-        ad_vector = torch.sum(F.kl_div(Pl, Sl, reduction='none'), dim=-1)
-        # ad_vector = ad_vector.view(batch_size, seq_len)
         return ad_vector
 
     def association_discrepancy(self, P_list, S_list):
-
         return (1 / len(P_list)) * sum(
             [
                 self.layer_association_discrepancy(P, S)

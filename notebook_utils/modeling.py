@@ -18,12 +18,19 @@ DEFAULT_WDD_W_F = nd.pdf(pos_in_distribution)
 DEFAULT_WDD_MA_F = nd.pdf(pos_in_distribution)
 
 
-def get_a_scores(model, dataloader) -> np.ndarray:
+def get_a_scores(
+    model, dataloader, scale: bool = False,
+    use_tqdm: bool = True, **a_scorer_kwargs
+) -> np.ndarray:
     a_scores = []
-    for batch in tqdm(dataloader):
+    if use_tqdm:
+        iterator = tqdm(dataloader)
+    else:
+        iterator = dataloader
+    for batch in iterator:
         x = batch['sequence']
         a_s = model.anomaly_score(
-            x, scale=False)
+            x, scale=scale, **a_scorer_kwargs)
         a_scores += [a_s]
     a_scores = np.concatenate(a_scores)
     if len(a_scores.shape) == 1:
@@ -155,30 +162,39 @@ def th_ws_experiment(
 
 
 def stats_experiment(
-    series_index: pd.Index, point_scores_list: List[np.ndarray],
+    series_index: pd.Index, scores_list: List[np.ndarray],
     point_cls: List[Literal[0, 1]], ths_list: List[List[float]],
-    ws_list: List[int], t_max: int = None, w_f: float = None,
-    ma_f: float = None, betas: List[float] = [1.0],
+    ws_list: List[int], scores_are_points: bool = True,
+    model_ws: int = None,
+    t_max: int = None, w_f: float = None, ma_f: float = None,
+    betas: List[float] = [1.0],
 ) -> pd.DataFrame:
+    assert scores_are_points and model_ws is not None,\
+        '"model_ws" cannot be None if "scores_are_points" is True.'
     if type(betas) in [int, float]:
         betas = [betas]
     threshold_stats = defaultdict(lambda: [])
-    assert len(point_scores_list) == len(ths_list) == len(ws_list),\
+    assert len(scores_list) == len(ths_list) == len(ws_list),\
         'Length of "point_scores" (%d), "ths" (%d), "wss" (%d) not same'\
-        % (len(point_scores_list), len(ths_list), len(ws_list))
+        % (len(scores_list), len(ths_list), len(ws_list))
 
-    n_stats = len(point_scores_list)
+    if model_ws is None:
+        model_ws = 0
+    else:
+        model_ws -= 1
+    n_stats = len(scores_list)
     for i in tqdm(range(n_stats)):
-        point_scores = point_scores_list[i]
+        point_scores = scores_list[i]
         ths = ths_list[i]
         ws = ws_list[i]
         true_cls = adjust_point_cls_with_window(
-            point_cls, ws, return_point_cls=False)
+            point_cls, ws + model_ws, return_point_cls=False)
 
         for th in ths:
             exp_step(
                 threshold_stats=threshold_stats, series_index=series_index,
-                point_scores=point_scores, true_cls=true_cls,
+                scores=point_scores, true_cls=true_cls,
+                scores_are_points=scores_are_points,
                 th=th, ws=ws, t_max=t_max, w_f=w_f, ma_f=ma_f,
                 betas=betas
             )
@@ -187,13 +203,13 @@ def stats_experiment(
 
 def exp_step(
     threshold_stats: Dict, series_index: pd.Index,
-    point_scores: np.ndarray, true_cls: np.ndarray,
-    th: float, ws: int, t_max: int = None,
-    w_f: float = None, ma_f: float = None,
+    scores: np.ndarray, true_cls: np.ndarray,
+    th: float, ws: int, scores_are_points: bool = False,
+    t_max: int = None, w_f: float = None, ma_f: float = None,
     betas: List[float] = [1.0]
 ):
     pred_cls = predict(
-        point_scores=point_scores, th=th, ws=ws,
+        point_scores=scores, th=th, ws=ws,
         return_point_cls=False)
 
     threshold_stats['ws'] += [ws]

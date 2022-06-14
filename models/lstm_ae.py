@@ -1,6 +1,12 @@
 from torch import nn
 import torch
 import torch.nn.functional as F
+from torch import optim
+from torch.nn.parameter import Parameter
+from typing import Dict, Generator, List, Tuple, Union
+
+from predpy.wrapper import Reconstructor
+from anomaly_detection import AnomalyDetector
 
 
 class LSTMEncoder(nn.Module):
@@ -99,6 +105,11 @@ class LSTMAE(nn.Module):
         pass_last_h_state: bool = False
     ):
         super().__init__()
+        self.params = dict(
+            c_in=c_in, h_size=h_size,
+            n_layers=n_layers, z_size=z_size,
+            pass_last_h_state=pass_last_h_state
+        )
         self.c_in = c_in
         self.n_layers = n_layers
         self.h_size = h_size
@@ -121,6 +132,59 @@ class LSTMAE(nn.Module):
     def decode(self, emb, seq_len: int):
         x_hat = self.decoder(emb, seq_len)
         return x_hat
+
+
+class LSTMAEWrapper(Reconstructor, AnomalyDetector):
+    def __init__(
+        self,
+        model: LSTMAE = nn.Module(),
+        lr: float = 1e-4,
+        criterion: nn.Module = nn.MSELoss(),
+        OptimizerClass: optim.Optimizer = optim.Adam,
+        optimizer_kwargs: Dict = {},
+        target_cols_ids: List[int] = None,
+        params_to_train: Generator[Parameter, None, None] = None,
+    ):
+        AnomalyDetector.__init__(self, score_names=['norm2_x'])
+        Reconstructor.__init__(
+            self, model=model, lr=lr, criterion=criterion,
+            OptimizerClass=OptimizerClass,
+            optimizer_kwargs=optimizer_kwargs,
+            target_cols_ids=target_cols_ids,
+            params_to_train=params_to_train
+        )
+        self.mse = nn.MSELoss(reduction='none')
+
+    def get_loss(self, x, x_hat):
+        return self.criterion(x, x_hat)
+
+    def step(self, batch):
+        x, _ = self.get_Xy(batch)
+        x_hat = self.model(x)
+        loss = self.get_loss(x, x_hat)
+        return loss
+
+    def predict(self, x):
+        with torch.no_grad():
+            x_hat = self.model(x)
+            return x_hat
+
+    def anomaly_score(
+        self, x, scale: bool = False, return_pred: bool = False
+    ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
+        batch_size = x.size(0)
+        with torch.no_grad():
+            x_hat = self.model(x)
+            # mse not including batch
+            norm2_x = torch.sum(
+                torch.sum(torch.square(x - x_hat), dim=-1), dim=-1)
+        # score = torch.stack([norm2_x1, norm2_x2], dim=1).tolist()
+        score = norm2_x.view(batch_size, 1).tolist()
+        if scale:
+            score = self.scores_scaler.transform(score).tolist()
+        if return_pred:
+            return score, x_hat
+        return score
 
 
 class LSTMVAE(nn.Module):

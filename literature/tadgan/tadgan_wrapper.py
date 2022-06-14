@@ -1,3 +1,4 @@
+import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from torch import nn, optim
 from typing import Dict, List, Tuple, Literal, Union
@@ -228,25 +229,45 @@ class TADGANWrapper(Reconstructor, AnomalyDetector):
             return score, x_hat
         return score
 
-    def fit_scalers(self, dataloader: DataLoader):
-        """Dataloader has to have batch_size equals 1."""
+    def fit_scores_scaler(
+        self,
+        dataloader: DataLoader = None,
+        scores: np.ndarray = None,
+        classes: np.ndarray = None,
+        use_tqdm: bool = True,
+        window_step: bool = False
+    ) -> np.ndarray:
+        if window_step:
+            assert dataloader.batch_size == 1,\
+                'If "window_step" is True, "batch_size" should be 1.'
+
         ws = self.model.params['window_size']
         norm1_x, critic_x = [], []
-        for i, batch in enumerate(tqdm(dataloader)):
-            if i % ws == 0:
+        if use_tqdm:
+            iterator = tqdm(dataloader)
+        else:
+            iterator = dataloader
+
+        for i, batch in enumerate(iterator):
+            if not window_step or i % ws == 0:
                 x, _ = self.get_Xy(batch)
+                batch_size = x.size(0)
                 with torch.no_grad():
                     x_hat = self.model(x)
                     n1_x = torch.linalg.norm(
-                        (x - x_hat).reshape(1, -1), ord=1, dim=1)
-                    c_x = self.model.critic_x(x_hat).view(-1)
+                        (x - x_hat).reshape(batch_size, -1), ord=1, dim=1)
+                    c_x = self.model.critic_x(x_hat)  # .view(batch_size)
                 norm1_x += [n1_x]
                 critic_x += [c_x]
 
-        self.norm1_x_scaler = MinMaxScaler().fit(
-            torch.stack(norm1_x).numpy())
-        self.critic_x_scaler = MinMaxScaler().fit(
-            torch.stack(critic_x).numpy())
+        norm1_x = torch.concat(norm1_x).numpy().reshape(-1, 1)
+        critic_x = torch.concat(critic_x).numpy().reshape(-1, 1)
+
+        norm1_x = self.norm1_x_scaler.fit_transform(norm1_x)
+        critic_x = self.critic_x_scaler.fit_transform(critic_x)
+
+        scaled_scores = self.alpha * norm1_x + (1 - self.alpha) * critic_x
+        return scaled_scores
 
     # def validation_step(self, batch, batch_idx):
     #     x, _ = self.get_Xy(batch)

@@ -16,6 +16,7 @@ from tqdm.auto import tqdm
 from typing import Union, Tuple, Dict, List, Literal
 from sklearn.metrics import fbeta_score
 from sklearn.model_selection import GridSearchCV
+from notebook_utils.modeling import get_a_scores
 
 from predpy.dataset import MultiTimeSeriesDataloader, MultiTimeSeriesDataset
 from predpy.plotter.plotter import plot_anomalies, get_ids_ranges
@@ -28,12 +29,15 @@ Allowed types: torch.Tensor, MultiTimeSeriesDataloader.")
 
 class AnomalyDetector:
     def __init__(
-        self, score_names: List[str] = None
+        self, score_names: List[str] = None, has_dedicated_scaler: bool = False
     ):
         self.score_names = score_names
         self.scores_in_use = score_names
         self.thresholder = LogisticRegression()
-        self.scores_scaler = MinMaxScaler()
+        if has_dedicated_scaler:
+            self.scores_scaler = None
+        else:
+            self.scores_scaler = MinMaxScaler()
 
     @abstractmethod
     def anomaly_score(
@@ -392,6 +396,23 @@ class AnomalyDetector:
 
             writer.writerow(['score', 'class'])
             writer.writerows(rows)
+
+    def fit_scores_scaler(
+        self,
+        dataloader: DataLoader = None,
+        scores: np.ndarray = None,
+        classes: np.ndarray = None,
+        use_tqdm: bool = True
+    ) -> np.ndarray:
+        assert dataloader is not None or scores is not None,\
+            '"dataloader" and "scores" cannot be both None.'
+        if scores is None:
+            scores = get_a_scores(
+                self, dataloader, scale=False, use_tqdm=use_tqdm)
+        if classes is not None:
+            scores = scores[np.where(classes == 0)]
+        scaled_scores = self.scores_scaler.fit_transform(scores)
+        return scaled_scores
 
     def fit_thresholder(
         self,

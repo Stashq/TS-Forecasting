@@ -158,7 +158,7 @@ class ATWrapper(Reconstructor, AnomalyDetector):
 
     def anomaly_score(
         self, x, scale: bool = True, return_pred: bool = False,
-        return_only_a_score: bool = False
+        return_only_point_a_scores: bool = False
     ) -> Union[List[float], Tuple[List[float], List[torch.Tensor]]]:
         with torch.no_grad():
             x_hat, P_layers, S_layers = self.model(x)
@@ -181,15 +181,31 @@ class ATWrapper(Reconstructor, AnomalyDetector):
 
         assert norm.shape[1] == self.model.N
 
-        a_score = torch.mul(ad, norm)
-        if return_only_a_score:
-            return a_score.tolist()
+        point_a_scores = torch.mul(ad, norm).numpy()
+        if return_only_point_a_scores:
+            if scale:
+                shape_ = point_a_scores.shape
+                point_a_scores = self.scores_scaler.transform(
+                    point_a_scores.reshape(-1, 1)).reshape(shape_)
+            return point_a_scores
 
-        res_scores = self.get_selected_scores(
-            self.score_names, x_diff, a_score)
-        # res_scores = a_score.tolist()
+        a_score = point_a_scores.max(axis=1).reshape(-1, 1)
         if scale:
-            res_scores = self.scores_scaler.transform(res_scores).tolist()
+            a_score = self.scores_scaler.transform(a_score)
+        a_score = a_score.tolist()
+
         if return_pred:
-            return res_scores, x_hat
-        return res_scores
+            return a_score, x_hat
+        return a_score
+
+        # if return_only_a_score:
+        #     return a_score.tolist()
+
+        # res_scores = self.get_selected_scores(
+        #     self.score_names, x_diff, a_score)
+        # # res_scores = a_score.tolist()
+        # if scale:
+        #     res_scores = self.scores_scaler.transform(res_scores).tolist()
+        # if return_pred:
+        #     return res_scores, x_hat
+        # return res_scores

@@ -284,9 +284,7 @@ class Experimentator:
         return pl_model
 
     def _find_last_model(
-        self,
-        dir_path: str,
-        file_name: str
+        self, dir_path: str, file_name: str
     ):
         files = [
             file[:-5]

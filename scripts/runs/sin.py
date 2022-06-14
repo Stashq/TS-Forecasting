@@ -31,6 +31,7 @@ from literature.tadgan import TADGAN, TADGANWrapper
 from anomaly_detection import AnomalyDetector
 from anomaly_detection.data_loading import get_dataset
 from models.ideas import LSTMMVR, ConvMVR, MVRWrapper
+from models import ConvAE, ConvAEWrapper, LSTMAE, LSTMAEWrapper
 
 
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -88,41 +89,79 @@ datasets_params = [
 ]
 
 models_params = [
+    # ModelParams(
+    #     name_=f"LSTMAE_h50_z10_l1", cls_=LSTMAE,
+    #     init_params=dict(
+    #         c_in=c_in, h_size=50, n_layers=1, z_size=10),
+    #     WrapperCls=LSTMAEWrapper
+    # ),
+    # ModelParams(
+    #     name_=f'ConvAE_ws{window_size}_nk10_ks3_es50', cls_=ConvAE,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, n_kernels=10,
+    #         kernel_size=3, emb_size=50),
+    #     WrapperCls=ConvAEWrapper
+    # ),
+    # ModelParams(
+    #     name_="VELC_h50_l1_z10_N10_th0.0", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
+    #         N_constraint=10, threshold=0.0),
+    #     WrapperCls=VELCWrapper
+    # ),
+    # ModelParams(
+    #     name_="VELC_h50_l1_z10_N20_th0.0", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
+    #         N_constraint=20, threshold=0.0),
+    #     WrapperCls=VELCWrapper
+    # ),
+    # ModelParams(
+    #     name_="VELC_h50_l1_z10_N30_th0.0", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
+    #         N_constraint=30, threshold=0.0),
+    #     WrapperCls=VELCWrapper
+    # ),
+    # ModelParams(
+    #     name_="VELC_h50_l1_z10_N10_th0.025", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
+    #         N_constraint=10, threshold=0.025),
+    #     WrapperCls=VELCWrapper
+    # ),
+    # ModelParams(
+    #     name_="VELC_h50_l1_z10_N20_th0.025", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
+    #         N_constraint=20, threshold=0.025),
+    #     WrapperCls=VELCWrapper
+    # ),
+    # ModelParams(
+    #     name_="VELC_h50_l1_z10_N30_th0.025", cls_=VELC,
+    #     init_params=dict(
+    #         c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
+    #         N_constraint=30, threshold=0.025),
+    #     WrapperCls=VELCWrapper
+    # ),
+    # ModelParams(
+    #     name_="TadGAN_h50_l1_z10_g1d1_warmup0", cls_=TADGAN,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, h_size=50, n_layers=1, z_size=10),
+    #     WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
+    #         gen_dis_train_loops=(1, 1), warmup_epochs=0)),
+    # ModelParams(
+    #     name_="AnomTrans_l3_d512_lambda3", cls_=AnomalyTransformer,
+    #     init_params=dict(
+    #         window_size=window_size, c_in=c_in, d_model=512, n_layers=3,
+    #         lambda_=3),
+    #     WrapperCls=ATWrapper),
     ModelParams(
-        name_="VELC_h50_l1_z10", cls_=VELC,
+        name_="AnomTrans_l1_d3_lambda10", cls_=AnomalyTransformer,
         init_params=dict(
-            c_in=c_in, window_size=window_size, h_size=50, n_layers=1, z_size=10,
-            N_constraint=20, threshold=0),
-        WrapperCls=VELCWrapper
-    ),
-    ModelParams(
-        name_="TadGAN_h50_l1_z10_g1d1_warm0", cls_=TADGAN,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, h_size=50, n_layers=1, z_size=10),
-        WrapperCls=TADGANWrapper, wrapper_kwargs=dict(
-            gen_dis_train_loops=(1, 1), warmup_epochs=0)
-    ),
-    ModelParams(
-        name_="AnomTrans_l2_d5_l2", cls_=AnomalyTransformer,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, d_model=5, n_layers=2,
-            lambda_=0.5),
-        WrapperCls=ATWrapper, wrapper_kwargs=dict(
-            score_names=['xd_max', 'xd_l2', 's_max', 's_mean'])),
-    ModelParams(
-        name_=f"LSTMMVR_w{window_size}_h50_z10_l1", cls_=LSTMMVR,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, h_size=50, z_size=10,
-            n_layers=1),
-        WrapperCls=MVRWrapper
-    ),
-    ModelParams(
-        name_=f'ConvMVR_ws{window_size}_nk10_ks3_es50', cls_=ConvMVR,
-        init_params=dict(
-            window_size=window_size, c_in=c_in, n_kernels=10,
-            kernel_size=3, emb_size=50),
-        WrapperCls=MVRWrapper
-    ),
+            window_size=window_size, c_in=c_in, d_model=3, n_layers=1,
+            lambda_=10),
+        WrapperCls=ATWrapper),
 ]
 
 
@@ -130,9 +169,9 @@ chp_p = CheckpointParams(
     dirpath="./checkpoints", monitor='val_loss', verbose=True,
     save_top_k=1)
 tr_p = TrainerParams(
-    max_epochs=20, gpus=1, auto_lr_find=False)
+    max_epochs=40, gpus=1, auto_lr_find=False)
 es_p = EarlyStoppingParams(
-    monitor='val_loss', patience=5, min_delta=1e-2, verbose=True)
+    monitor='val_loss', patience=10, min_delta=1e-2, verbose=True)
 
 exp = Experimentator(
     models_params=models_params,
@@ -145,15 +184,15 @@ exp = Experimentator(
 )
 
 # exp = load_experimentator('./saved_experiments/2022-05-27_22:36:05.pkl')
-exp = load_last_experimentator('./saved_experiments')
-# exp.run_experiments(
-#     experiments_path="./saved_experiments",
-#     safe=False, continue_run=True
-# )
-# plot_exp_predictions(
-#     exp, dataset_idx=0,
-#     file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name, str(exp.exp_date))
-# )
+# exp = load_last_experimentator('./saved_experiments')
+exp.run_experiments(
+    experiments_path="./saved_experiments",
+    safe=False, continue_run=True
+)
+plot_exp_predictions(
+    exp, dataset_idx=0,
+    file_path='./pages/%s/%s/%s/%s.html' % (topic, collection_name, dataset_name, str(exp.exp_date))
+)
 
 
 
@@ -167,45 +206,45 @@ exp = load_last_experimentator('./saved_experiments')
 # # )
 
 
-ds_id = 0
-min_points = 3
-test_cls_path = './data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name)
-class_weight = {0: 0.7, 1: 0.3}
+# ds_id = 0
+# min_points = 3
+# test_cls_path = './data/%s/%s/test_label/%s.csv' % (topic, collection_name, dataset_name)
+# class_weight = {0: 0.7, 1: 0.3}
 
-dataset = get_dataset(
-    path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-    window_size=window_size, ts_scaler=exp.get_targets_scaler(ds_id))
-data_classes = pd.read_csv(
-    test_cls_path, header=None)\
-    .iloc[:, 0].to_list()
-# rec_classes = None
-rec_classes = dataset.get_recs_cls_by_data_cls(
-    data_classes, min_points=min_points)
-n_models = exp.models_params.shape[0]
+# dataset = get_dataset(
+#     path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+#     window_size=window_size, ts_scaler=exp.get_targets_scaler(ds_id))
+# data_classes = pd.read_csv(
+#     test_cls_path, header=None)\
+#     .iloc[:, 0].to_list()
+# # rec_classes = None
+# rec_classes = dataset.get_recs_cls_by_data_cls(
+#     data_classes, min_points=min_points)
+# n_models = exp.models_params.shape[0]
 
-for m_id in range(0, n_models):
-    model_name = exp.models_params.iloc[m_id]['name_']
-    try:
-        model = exp.load_pl_model(
-            m_id, os.path.join('checkpoints', dataset_name, model_name))
-        model.fit_run_detection(
-            window_size=window_size,
-            test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
-            rec_classes=rec_classes,
-            test_cls_path=test_cls_path,
-            min_points=min_points, scale_scores=True,  # class_weight=class_weight,
-            ts_scaler=exp.get_targets_scaler(ds_id),
-            # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-            save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
-            # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-            save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
-            plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
-            save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name),
-            f_score_beta=0.5,
-            wdd_t_max=window_size/2,
-            wdd_w_f=0.002,
-            wdd_ma_f=0.01
-        )
-    except Exception as e:
-        raise e
+# for m_id in range(0, n_models):
+#     model_name = exp.models_params.iloc[m_id]['name_']
+#     try:
+#         model = exp.load_pl_model(
+#             m_id, os.path.join('checkpoints', dataset_name, model_name))
+#         model.fit_run_detection(
+#             window_size=window_size,
+#             test_path='./data/%s/%s/test/%s.csv' % (topic, collection_name, dataset_name),
+#             rec_classes=rec_classes,
+#             test_cls_path=test_cls_path,
+#             min_points=min_points, scale_scores=True,  # class_weight=class_weight,
+#             ts_scaler=exp.get_targets_scaler(ds_id),
+#             # load_scores_path = './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+#             save_scores_path= './saved_scores_preds/%s/%s/%s/anom_scores.csv' % (collection_name, dataset_name, model_name),
+#             # load_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+#             save_preds_path = './saved_scores_preds/%s/%s/%s/preds.csv' % (collection_name, dataset_name, model_name),
+#             plot=True,  # start_plot_pos=15000, end_plot_pos=21000,
+#             save_html_path='./pages/%s/%s/%s.html' % (collection_name, dataset_name, model_name),
+#             f_score_beta=0.5,
+#             wdd_t_max=window_size/2,
+#             wdd_w_f=0.002,
+#             wdd_ma_f=0.01
+#         )
+#     except Exception as e:
+#         raise e
         # print('Problem with fit_run_detection on model "%s".' % model_name)
