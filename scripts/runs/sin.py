@@ -157,9 +157,9 @@ models_params = [
     #         lambda_=3),
     #     WrapperCls=ATWrapper),
     ModelParams(
-        name_="AnomTrans_l1_d3_lambda10", cls_=AnomalyTransformer,
+        name_="AnomTrans_l2_d10_lambda10", cls_=AnomalyTransformer,
         init_params=dict(
-            window_size=window_size, c_in=c_in, d_model=3, n_layers=1,
+            window_size=window_size, c_in=c_in, d_model=10, n_layers=2,
             lambda_=10),
         WrapperCls=ATWrapper),
 ]

@@ -165,7 +165,8 @@ def plot_dataset(
     min_id: int = None, max_id: int = None,
     hlines: Dict[str, float] = {},
     n_cols: int = 2, n_row: int = None,
-    show_f_name: bool = True, show_legend: bool = True
+    show_f_name: bool = True, show_legend: bool = True,
+    subplots_adjust_kwargs: Dict = {}
 ):
     if not isinstance(ds, Dict):
         ds = {'dataset': ds}
@@ -175,10 +176,15 @@ def plot_dataset(
         n_cols, n_row, figsize, features_cols, n_features)
 
     fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize)
+    if n_rows * n_cols > n_features:
+        for i in range(n_rows * n_cols - n_features):
+            fig.delaxes(axs[n_rows-1][-i-1])
+    if len(subplots_adjust_kwargs) > 0:
+        plt.subplots_adjust(**subplots_adjust_kwargs)
     for i, col_id in enumerate(features_cols):
         f_name = None
         if show_f_name:
-            f_name = f'feature {col_id}'
+            f_name = f'{col_id}'
         ax = _select_ax(axs, n_rows, n_cols, i, title=f_name)
         for ds_name, ds_vals in ds.items():
             if is_df:

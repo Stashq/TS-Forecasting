@@ -19,5 +19,8 @@ def load_th_exp(path):
 def save_th_exp(df, path: str, mk_dirs: bool = False):
     if mk_dirs:
         os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_col = df['preds_rec_cls']
     df['preds_rec_cls'] = df['preds_rec_cls'].apply(lambda x: x.tolist())
     df.to_csv(path, index=False)
+    # bring back column
+    df['preds_rec_cls'] = tmp_col

@@ -7,13 +7,13 @@ from models import LSTMEncoder, LSTMDecoder
 class ConstraintNet(nn.Module):
     def __init__(
         self, c_in: int, window_size: int, z_size: int,
-        N: int, threshold: float
+        N: int, threshold: float, h1_size: int = 8, h2_size: int = 16
     ):
         super(ConstraintNet, self).__init__()
 
-        self.l1 = nn.Linear(c_in*window_size, 8)
-        self.l2 = nn.Linear(8, 16)
-        self.l3 = nn.Linear(16, z_size*N)
+        self.l1 = nn.Linear(c_in*window_size, h1_size)
+        self.l2 = nn.Linear(h1_size, h2_size)
+        self.l3 = nn.Linear(h2_size, z_size*N)
         self.cos = nn.CosineSimilarity(dim=-1)
 
         # self.layer1 = layers.Dense(8, input_dim=c_in, activation='relu')
@@ -53,7 +53,8 @@ class ConstraintNet(nn.Module):
 class VELC(nn.Module):
     def __init__(
         self, c_in: int, window_size: int, h_size: int,  n_layers: int,
-        z_size: int, N_constraint: int, threshold: float
+        z_size: int, N_constraint: int, threshold: float,
+        h1_size: int = 8, h2_size: int = 16
     ):
         super(VELC, self).__init__()
         self.params = {
@@ -67,7 +68,8 @@ class VELC(nn.Module):
         self.z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_1 = ConstraintNet(
             c_in=c_in, window_size=window_size, z_size=z_size,
-            N=N_constraint, threshold=threshold)
+            N=N_constraint, threshold=threshold,
+            h1_size=h1_size, h2_size=h2_size)
 
         self.decoder = LSTMDecoder(
             z_size=z_size, h_size=h_size, x_size=c_in, n_layers=n_layers)
@@ -78,7 +80,8 @@ class VELC(nn.Module):
         self.re_z_log_sig_dense = nn.Linear(z_size, z_size)
         self.constraint_net_2 = ConstraintNet(
             c_in=c_in, window_size=window_size, z_size=z_size,
-            N=N_constraint, threshold=threshold)
+            N=N_constraint, threshold=threshold,
+            h1_size=h1_size, h2_size=h2_size)
 
     def reparametrization(self, mu, log_sig):
         eps = torch.randn_like(mu)

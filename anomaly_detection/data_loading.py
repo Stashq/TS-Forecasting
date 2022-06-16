@@ -30,6 +30,42 @@ def get_dataset(
     return dataset
 
 
+def get_train_test_ds(
+    topic: str, collection_name: str, ds_name: str,
+    window_size: int, ts_scaler: TransformerMixin = None,
+    fit_scaler: bool = True, read_csv_kwargs: Dict = {'header': None}
+) -> Tuple[MultiTimeSeriesDataset]:
+    train_df = pd.read_csv(
+        f'data/{topic}/{collection_name}/train/{ds_name}.csv',
+        **read_csv_kwargs
+    )
+    test_df = pd.read_csv(
+        f'data/{topic}/{collection_name}/test/{ds_name}.csv',
+        **read_csv_kwargs
+    )
+    if fit_scaler:
+        ts_scaler.fit(train_df)
+    if ts_scaler is not None:
+        train_df[:] = ts_scaler.transform(train_df)
+        test_df[:] = ts_scaler.transform(test_df)
+    try:
+        train_df.columns = train_df.columns.astype(int)
+        test_df.columns = test_df.columns.astype(int)
+    except TypeError:
+        pass
+    trian_ds = MultiTimeSeriesDataset(
+        sequences=[train_df],
+        window_size=window_size,
+        target=train_df.columns.tolist()
+    )
+    test_ds = MultiTimeSeriesDataset(
+        sequences=[test_df],
+        window_size=window_size,
+        target=test_df.columns.tolist()
+    )
+    return trian_ds, test_ds
+
+
 def get_dataset_names(path: str):
     """Dataset path should follow pattern:
     .*/data/{topic}/{collection}/{"train", "test" or "test_labels"/{dataset}"""

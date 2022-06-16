@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Literal, Tuple
+from typing import Dict, List, Literal, Tuple, Union
 from tqdm.auto import tqdm
 from sklearn.metrics import confusion_matrix, fbeta_score
 from collections import defaultdict
@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 import scipy
 
 from predpy.wrapper import Reconstructor
+from predpy.experimentator import Experimentator
 
 
 nd = scipy.stats.norm(loc=0, scale=1)
@@ -164,13 +165,12 @@ def th_ws_experiment(
 def stats_experiment(
     series_index: pd.Index, scores_list: List[np.ndarray],
     point_cls: List[Literal[0, 1]], ths_list: List[List[float]],
-    ws_list: List[int], scores_are_points: bool = True,
-    model_ws: int = None,
+    ws_list: List[int], model_ws: int = None,
     t_max: int = None, w_f: float = None, ma_f: float = None,
     betas: List[float] = [1.0],
 ) -> pd.DataFrame:
-    assert scores_are_points and model_ws is not None,\
-        '"model_ws" cannot be None if "scores_are_points" is True.'
+    # assert scores_are_points and model_ws is not None,\
+    #     '"model_ws" cannot be None if "scores_are_points" is True.'
     if type(betas) in [int, float]:
         betas = [betas]
     threshold_stats = defaultdict(lambda: [])
@@ -194,7 +194,6 @@ def stats_experiment(
             exp_step(
                 threshold_stats=threshold_stats, series_index=series_index,
                 scores=point_scores, true_cls=true_cls,
-                scores_are_points=scores_are_points,
                 th=th, ws=ws, t_max=t_max, w_f=w_f, ma_f=ma_f,
                 betas=betas
             )
@@ -204,7 +203,7 @@ def stats_experiment(
 def exp_step(
     threshold_stats: Dict, series_index: pd.Index,
     scores: np.ndarray, true_cls: np.ndarray,
-    th: float, ws: int, scores_are_points: bool = False,
+    th: float, ws: int,
     t_max: int = None, w_f: float = None, ma_f: float = None,
     betas: List[float] = [1.0]
 ):
@@ -311,3 +310,62 @@ def recalculate_wdd(th_df, s_index, point_cls, t_max):
                 true_cls, t_max=t_max),
             axis=1
         )
+
+
+def a_score_exp(
+    train_dl: DataLoader, test_dl: DataLoader,
+    exp: Experimentator, scale: bool,
+    ds_id: int = 0, models_ids: List = None,
+    calculate_training_a_score: bool = True
+) -> Dict:
+    res = {}
+    if models_ids is None:
+        models_ids = exp.models_params.index
+    else:
+        assert all(item in exp.models_params.index for item in models_ids)
+    for m_id in models_ids:
+        m_name = exp.models_params.loc[m_id]['name_']
+        ds_name = exp.datasets_params.loc[ds_id]['name_']
+        model = exp.load_pl_model(m_id, f'checkpoints/{ds_name}/{m_name}')
+
+        train_a_scores = np.zeros((1, 1))
+        if calculate_training_a_score:
+            if scale:
+                train_a_scores = model.fit_scores_scaler(
+                    train_dl, use_tqdm=True)
+            else:
+                train_a_scores = get_a_scores(
+                    model=model, dataloader=train_dl, use_tqdm=True)
+
+        test_a_scores = get_a_scores(
+            model, test_dl, scale=scale, use_tqdm=True)
+        res[m_name] = [train_a_scores, test_a_scores]
+    return res
+
+
+def exctract_a_scores(
+    exps_a_scores: Union[Dict, List[Dict]],
+    train_len: int = None, test_len: int = None
+):
+    if not (isinstance(exps_a_scores, List) or
+            isinstance(exps_a_scores, Tuple)):
+        exps_a_scores = [exps_a_scores]
+
+    train_a_scores = {}
+    test_a_scores = {}
+    for e_a_s in exps_a_scores:
+        for m_name, scores in e_a_s.items():
+            train_a_s = np.copy(scores[0])
+            test_a_s = np.copy(scores[1])
+            if train_len is not None and len(train_a_s) < train_len:
+                n_padding = train_len - len(train_a_s)
+                train_a_s = np.concatenate(
+                    [np.zeros((n_padding, 1)), train_a_s])
+            if test_len is not None and len(test_a_s) < test_len:
+                # old = scores[1]
+                n_padding = test_len - len(test_a_s)
+                test_a_s = np.concatenate(
+                    [np.zeros((n_padding, 1)), test_a_s])
+            train_a_scores[m_name] = train_a_s
+            test_a_scores[m_name] = test_a_s
+    return train_a_scores, test_a_scores

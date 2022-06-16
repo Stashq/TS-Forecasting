@@ -422,7 +422,8 @@ class Experimentator:
 
                 try:
                     if continue_run and\
-                            model_idx < self.last_step_end[1]:
+                            dataset_idx <= self.last_step_end[0] and\
+                            model_idx <= self.last_step_end[1]:
                         continue
                     # start = time.time()
                     model_preds_df = self._experiment_step(
