@@ -387,6 +387,7 @@ def find_th(
     if m_ids is None:
         m_ids = exp.models_params.index.tolist()
 
+    lr_results = {}
     for ds_id in ds_ids:
         window_size = exp.datasets_params.loc[ds_id]['window_size']
         ts_scaler = exp.datasets_params.loc[ds_id]['scaler']
@@ -410,8 +411,6 @@ def find_th(
             .iloc[:, 0].to_numpy()
         test_rec_cls = adjust_point_cls_with_window(
             test_point_cls, window_size, return_point_cls=False)
-
-        ds_results = {}
 
         for m_id in m_ids:
             m_name = exp.models_params.loc[m_id]['name_']
@@ -461,38 +460,40 @@ def find_th(
             if not os.path.exists(sth_exp_path) or recalculate_ths:
                 print('Finding threshold for model ' + m_name)
                 # fitting with LR
-                lr_model = LogisticRegression().fit(
-                    test_a_scores, test_rec_cls)
+                lr_model = LogisticRegression(
+                    class_weight={0: 0.5, 1: 0.5}
+                ).fit(test_a_scores, test_rec_cls)
                 pred_cls = lr_model.predict(test_a_scores)
                 pred_cls = adjust_point_cls_with_window(
                     pred_cls, window_size, return_point_cls=True)
                 f1 = fbeta_score(test_rec_cls, pred_cls, beta=1)
                 f0_5 = fbeta_score(test_rec_cls, pred_cls, beta=0.5)
-                ds_results[m_name] = [f1, f0_5]
+                lr_results[m_name] = [f1, f0_5]
 
-                bounds = [
-                    get_diff(get_std(test_a_scores, ws))
-                    for ws in ws_list
-                ]
-                std_th_df = stats_experiment(
-                    series_index=test_index, t_max=None, model_ws=window_size,
-                    scores_list=bounds, point_cls=test_point_cls, ths_list=[ths] * len(ws_list),
-                    ws_list=ws_list, betas=[1.0, 0.5])
-                if verbose:
-                    df = std_th_df.loc[std_th_df.groupby(['ws'])['f1.0-score'].idxmax()]
-                    df = df.drop(columns=['preds_rec_cls', 'wdd'])
-                    print(df)
+                # bounds = [
+                #     get_diff(get_std(test_a_scores, ws))
+                #     for ws in ws_list
+                # ]
+                # std_th_df = stats_experiment(
+                #     series_index=test_index, t_max=None, model_ws=window_size,
+                #     scores_list=bounds, point_cls=test_point_cls, ths_list=[ths] * len(ws_list),
+                #     ws_list=ws_list, betas=[1.0, 0.5])
+                # if verbose:
+                #     df = std_th_df.loc[std_th_df.groupby(['ws'])['f1.0-score'].idxmax()]
+                #     df = df.drop(columns=['preds_rec_cls', 'wdd'])
+                #     print(df)
 
-                # saving threshold finding experiment results
-                os.makedirs(os.path.dirname(sth_exp_path), exist_ok=True)
-                save_th_exp(std_th_df, sth_exp_path)
+                # # saving threshold finding experiment results
+                # os.makedirs(os.path.dirname(sth_exp_path), exist_ok=True)
+                # save_th_exp(std_th_df, sth_exp_path)
 
-        if len(ds_results) > 0:
+
+        if len(lr_results) > 0:
             # saving prediction scores
-            path = f'notebook_a_scores/{collection_name}/{ds_name}/lr_prediction_results/{model_train_date}.csv'
+            path = f'notebook_a_scores/{collection_name}/{ds_name}/lr_prediction_results/{m_name}/{model_train_date}.csv'
             os.makedirs(os.path.dirname(path), exist_ok=True)
             df = pd.DataFrame.from_dict(
-                ds_results, orient='index', columns=['f1.0-score', 'f0.5-score']
+                lr_results, orient='index', columns=['f1.0-score', 'f0.5-score']
             )
             df.to_csv(path)
             if verbose:
@@ -533,9 +534,9 @@ def find_th(
 # )
 
 models_1_1_info = {
-    'ConvAE_ws200_nk20_ks5_es50': '2022-06-15_17:51:55',
+    'ConvAE_ws200_nk20_ks5_es50': '2022-06-15_16:58:59',
     'LSTMAE_h100_z50_l2': '2022-06-15_05:11:43',
-    'TadGAN_h50_l1_z10': '2022-06-15_17:51:55',
+    'TadGAN_h50_l1_z10': '2022-06-15_16:58:59',
     'VELC_h100_l2_z50_N50_th0.0': '2022-06-15_05:11:43',
     'AnomTrans_l2_d128_lambda3': '2022-06-16_01:36:24',
 }
@@ -559,6 +560,15 @@ models_infos = {
     'machine-2-1': models_2_1_info,
     'machine-3-10': models_3_10_info
 }
+# tmp = {
+#     'AnomTrans_l2_d128_lambda3': '2022-06-15_21:37:27',
+#     'AnomTrans_l2_d128_lambda3': '2022-06-16_01:36:24'  # <- LAMBDA 10
+# }
+# models_infos = {
+#     'machine-1-1': tmp,
+#     'machine-2-1': tmp,
+#     'machine-3-10': tmp
+# }
 
 for ds_name, models_info in models_infos.items():
     for m_name, exp_date in models_info.items():
@@ -570,9 +580,9 @@ for ds_name, models_info in models_infos.items():
         find_th(
             exp, ws_list=[50, 100, 200, 300, 400, 500],
             ths=np.linspace(5e-6, 2e-2, 1000),
-            load_scores=True, save_scores=True,
+            load_scores=True, save_scores=False,
             ds_names=[ds_name],
             m_ids=m_ids, scale=True,
             calculate_training_a_score=True,
-            # recalculate_ths=True
+            recalculate_ths=True
         )

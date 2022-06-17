@@ -100,6 +100,31 @@ def predict(
         return pred_rec_cls
 
 
+# def adjust_point_cls_with_window(
+#     point_cls: np.ndarray, ws: int,
+#     return_point_cls: bool = True
+# ) -> np.ndarray:
+#     """Translating point classes to record classes, then
+#     if "return_point_cls" is True, projecting classes back on points.
+
+#     Any record consisting anomaly point
+#     is treated as all points in sequence
+#     are anomalies."""
+#     s = pd.Series(point_cls)
+#     res = s.rolling(2*ws - 1, center=True).max()
+#     res[:ws-1] = res[:ws-1].index.to_series().apply(
+#         lambda idx: s[0:idx + ws].max()
+#     )
+#     if return_point_cls:
+#         res[-ws+1:] = res[-ws+1:].index.to_series().apply(
+#             lambda idx: s[idx - ws:].max()
+#         )
+#     else:
+#         res = res.dropna()
+
+#     return res.to_numpy()
+
+
 def adjust_point_cls_with_window(
     point_cls: np.ndarray, ws: int,
     return_point_cls: bool = True
@@ -111,12 +136,12 @@ def adjust_point_cls_with_window(
     is treated as all points in sequence
     are anomalies."""
     s = pd.Series(point_cls)
-    res = s.rolling(2*ws - 1, center=True).max()
-    res[:ws-1] = res[:ws-1].index.to_series().apply(
+    res = s.rolling(2*ws - 1).max()
+    res[-2*ws:-ws] = res[-2*ws:-ws].index.to_series().apply(
         lambda idx: s[0:idx + ws].max()
     )
     if return_point_cls:
-        res[-ws+1:] = res[-ws+1:].index.to_series().apply(
+        res[-ws:] = res[-ws:].index.to_series().apply(
             lambda idx: s[idx - ws:].max()
         )
     else:

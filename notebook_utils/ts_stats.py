@@ -24,8 +24,11 @@ def get_std(series: np.ndarray, ws: int, na=None):
     return std
 
 
-def get_diff(stat: pd.DataFrame):
+def get_diff(stat: pd.DataFrame, na='fill'):
     res = stat.diff()
-    res = res.fillna(0)
+    if na == 'fill':
+        res = res.fillna(0)
+    elif na == 'drop':
+        res = res.dropna()
     res.name = stat.name + '_diff'
     return res

@@ -166,7 +166,9 @@ def plot_dataset(
     hlines: Dict[str, float] = {},
     n_cols: int = 2, n_row: int = None,
     show_f_name: bool = True, show_legend: bool = True,
-    subplots_adjust_kwargs: Dict = {}
+    subplots_adjust_kwargs: Dict = {},
+    y_lims: Tuple[int, int] = None,
+    yscale: str = None, titles: List[str] = None
 ):
     if not isinstance(ds, Dict):
         ds = {'dataset': ds}
@@ -182,10 +184,12 @@ def plot_dataset(
     if len(subplots_adjust_kwargs) > 0:
         plt.subplots_adjust(**subplots_adjust_kwargs)
     for i, col_id in enumerate(features_cols):
-        f_name = None
-        if show_f_name:
-            f_name = f'{col_id}'
-        ax = _select_ax(axs, n_rows, n_cols, i, title=f_name)
+        title = None
+        if titles is not None:
+            title = titles[i]
+        elif show_f_name:
+            title = f'{col_id}'
+        ax = _select_ax(axs, n_rows, n_cols, i, title=title)
         for ds_name, ds_vals in ds.items():
             if is_df:
                 ax.plot(ds_vals.iloc[min_id:max_id, col_id], label=ds_name)
@@ -203,6 +207,10 @@ def plot_dataset(
                 linestyles='-', lw=2, label=hl_name)
         if show_legend:
             ax.legend()
+        if y_lims is not None:
+            ax.set_ylim(y_lims)
+        if yscale is not None:
+            ax.set_yscale(yscale)
     return fig
 
 
